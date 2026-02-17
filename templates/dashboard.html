@@ -136,6 +136,7 @@
         display: flex;
         gap: 10px;
         margin-top: 20px;
+        flex-wrap: wrap;
     }
     
     .camera-actions .btn {
@@ -143,6 +144,7 @@
         text-align: center;
         padding: 10px;
         font-size: 14px;
+        min-width: 80px;
     }
     
     .loading {
@@ -168,131 +170,26 @@
         opacity: 0.9;
     }
 
-    /* New styles for shared cameras section */
-    .shared-section {
-        margin-top: 50px;
-    }
-    
-    .shared-section h2 {
-        color: white;
-        font-size: 24px;
-        margin-bottom: 20px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid rgba(255,255,255,0.2);
-    }
-    
-    .shared-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-        gap: 25px;
-        margin-top: 20px;
-    }
-    
-    .shared-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        border-radius: 15px;
-        padding: 25px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-        border-left: 4px solid #9b59b6;
-    }
-    
-    .shared-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
-    }
-    
-    .shared-header h3 {
-        margin: 0;
-        color: #333;
-        font-size: 22px;
-    }
-    
-    .shared-badge {
+    /* Role badge for shared cameras */
+    .role-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 12px;
         background: #9b59b6;
         color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    
-    .shared-info {
-        margin: 12px 0;
-    }
-    
-    .shared-info p {
-        margin: 8px 0;
-        color: #555;
-        font-size: 14px;
-    }
-    
-    .shared-info strong {
-        color: #333;
-        width: 80px;
-        display: inline-block;
-    }
-    
-    .shared-status {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 13px;
-        font-weight: 600;
-    }
-    
-    .status-active {
-        background: #d4edda;
-        color: #155724;
-    }
-    
-    .status-inactive {
-        background: #f8d7da;
-        color: #721c24;
-    }
-    
-    .shared-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
-    }
-    
-    .shared-actions .btn {
-        flex: 1;
-        text-align: center;
-        padding: 10px;
-        font-size: 14px;
-        border-radius: 5px;
-        text-decoration: none;
-    }
-    
-    .btn-view {
-        background: #3498db;
-        color: white;
-    }
-    
-    .btn-edit {
-        background: #f39c12;
-        color: white;
+        margin-left: 8px;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="dashboard-header">
-    <h2>📹 My Cameras</h2>
+    <h2>📹 Available Camera's</h2>
     <a href="/cameras/new" class="btn">➕ Add Camera</a>
 </div>
 
 <div id="cameras-container" class="cameras-grid">
     <div class="loading">Loading cameras...</div>
-</div>
-
-<!-- Shared Cameras Section (NEW) -->
-<div id="shared-section" class="shared-section" style="display: none;">
-    <h2>📱 Cameras Shared With Me</h2>
-    <div id="shared-grid" class="shared-grid"></div>
 </div>
 
 <div id="empty-state" style="display: none;">
@@ -356,7 +253,7 @@
             return data;
         } catch (error) {
             console.error('Error getting camera status:', error);
-            return { status: 'inactive', last_seen: 'Unknown' };
+            return { status: 'inactive', last_seen: 'Unknown', can_edit: false };
         }
     }
     
@@ -378,7 +275,7 @@
         }
     }
     
-    // Render owned camera card
+    // Render camera card
     function renderCameraCard(camera, images, status) {
         const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
         const statusText = status.status === 'active' ? '🟢 Active' : '🔴 Inactive';
@@ -410,11 +307,35 @@
             `;
         }
         
+        // Build action buttons based on role and permissions
+        let actionsHtml = '';
+        
+        // Refresh button for everyone
+        actionsHtml += `<button onclick="loadCameraImages('${camera.camera_id}').then(imgs => location.reload())" class="btn">🔄 Refresh</button>`;
+        
+        // Edit button (if owner or has edit permission)
+        if (camera.role === 'owner' || camera.can_edit) {
+            actionsHtml += `<a href="/cameras/${camera.camera_id}/edit" class="btn btn-secondary">✏️ Edit</a>`;
+        }
+        
+        // Share button (only for owner)
+        if (camera.role === 'owner') {
+            actionsHtml += `<a href="/cameras/${camera.camera_id}/share" class="btn" style="background: #9b59b6;">🔗 Share</a>`;
+        }
+        
+        // Delete button (only for owner)
+        if (camera.role === 'owner') {
+            actionsHtml += `<button onclick="deleteCamera('${camera.camera_id}')" class="btn btn-danger">🗑️ Delete</button>`;
+        }
+        
+        // Add role badge if shared
+        const roleBadge = camera.role === 'viewer' ? '<span class="role-badge">Shared</span>' : '';
+        
         return `
             <div class="camera-card" data-camera-id="${camera.camera_id}">
                 <div class="camera-header">
                     <div class="camera-info">
-                        <h3>${camera.name}</h3>
+                        <h3>${camera.name} ${roleBadge}</h3>
                         <p>📍 ${camera.location || 'No location'}</p>
                         <p>🏷️ ID: ${camera.camera_id}</p>
                         <p>🕐 Last updated: <span class="last-seen">${status.last_seen}</span></p>
@@ -425,37 +346,7 @@
                 ${imagesHtml}
                 
                 <div class="camera-actions">
-                    <button onclick="loadCameraImages('${camera.camera_id}').then(imgs => location.reload())" class="btn">🔄 Refresh</button>
-                    <a href="/cameras/${camera.camera_id}/edit" class="btn btn-secondary">✏️ Edit</a>
-                    <button onclick="deleteCamera('${camera.camera_id}')" class="btn btn-danger">🗑️ Delete</button>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Render shared camera card
-    function renderSharedCameraCard(camera, status, canEdit) {
-        const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
-        
-        return `
-            <div class="shared-card" data-camera-id="${camera.camera_id}">
-                <div class="shared-header">
-                    <h3>${camera.name}</h3>
-                    <span class="shared-badge">Shared</span>
-                </div>
-                <div class="shared-info">
-                    <p><strong>ID:</strong> ${camera.camera_id}</p>
-                    <p><strong>Location:</strong> ${camera.location || 'No location'}</p>
-                    <p><strong>Status:</strong> 
-                        <span class="shared-status ${statusClass}">
-                            ${status.status === 'active' ? '🟢 Active' : '🔴 Inactive'}
-                        </span>
-                    </p>
-                    <p><strong>Last seen:</strong> ${status.last_seen}</p>
-                </div>
-                <div class="shared-actions">
-                    <a href="/camera/${camera.camera_id}" class="btn-view btn">👁️ View</a>
-                    ${canEdit ? `<a href="/cameras/${camera.camera_id}/edit" class="btn-edit btn">✏️ Edit</a>` : ''}
+                    ${actionsHtml}
                 </div>
             </div>
         `;
@@ -464,8 +355,6 @@
     // Load all cameras
     async function loadAllCameras() {
         const container = document.getElementById('cameras-container');
-        const sharedSection = document.getElementById('shared-section');
-        const sharedGrid = document.getElementById('shared-grid');
         const emptyState = document.getElementById('empty-state');
         
         // Get cameras from server
@@ -473,95 +362,43 @@
         
         if (cameras.length === 0) {
             container.style.display = 'none';
-            sharedSection.style.display = 'none';
             emptyState.style.display = 'block';
             return;
         }
         
-        // Separate owned and shared cameras
-        const ownedCameras = [];
-        const sharedCameras = [];
-        
-        cameras.forEach(camera => {
-            if (camera.role === 'owner') {
-                ownedCameras.push(camera);
-            } else {
-                sharedCameras.push(camera);
-            }
-        });
-        
-        // Show/hide sections
-        if (ownedCameras.length > 0) {
-            container.style.display = 'grid';
-            container.innerHTML = '';
-            
-            // Load owned cameras
-            for (const camera of ownedCameras) {
-                const [images, status] = await Promise.all([
-                    loadCameraImages(camera.camera_id),
-                    getCameraStatus(camera.camera_id)
-                ]);
-                
-                const cardHtml = renderCameraCard(camera, images, status);
-                container.innerHTML += cardHtml;
-            }
-        } else {
-            container.style.display = 'none';
-        }
-        
-        // Load shared cameras
-        if (sharedCameras.length > 0) {
-            sharedSection.style.display = 'block';
-            sharedGrid.innerHTML = '';
-            
-            for (const camera of sharedCameras) {
-                const status = await getCameraStatus(camera.camera_id);
-                const cardHtml = renderSharedCameraCard(camera, status, camera.can_edit || false);
-                sharedGrid.innerHTML += cardHtml;
-            }
-        } else {
-            sharedSection.style.display = 'none';
-        }
-        
+        container.style.display = 'grid';
         emptyState.style.display = 'none';
+        container.innerHTML = '';
+        
+        // Load each camera
+        for (const camera of cameras) {
+            const [images, status] = await Promise.all([
+                loadCameraImages(camera.camera_id),
+                getCameraStatus(camera.camera_id)
+            ]);
+            
+            const cardHtml = renderCameraCard(camera, images, status);
+            container.innerHTML += cardHtml;
+        }
     }
     
     // Update timestamps periodically
     function updateTimestamps() {
-        // Update owned cameras
-        document.querySelectorAll('.camera-card').forEach(elem => {
-            const cameraId = elem.dataset.cameraId;
+        document.querySelectorAll('.last-seen').forEach(elem => {
+            const cameraCard = elem.closest('.camera-card');
+            const cameraId = cameraCard.dataset.cameraId;
             
             getCameraStatus(cameraId).then(status => {
-                const lastSeenElem = elem.querySelector('.last-seen');
-                if (lastSeenElem) lastSeenElem.textContent = status.last_seen;
+                elem.textContent = status.last_seen;
                 
                 // Update status badge
-                const badge = elem.querySelector('.status-badge');
+                const badge = cameraCard.querySelector('.status-badge');
                 if (status.status === 'active') {
                     badge.className = 'status-badge status-active';
                     badge.textContent = '🟢 Active';
                 } else {
                     badge.className = 'status-badge status-inactive';
                     badge.textContent = '🔴 Inactive';
-                }
-            });
-        });
-        
-        // Update shared cameras
-        document.querySelectorAll('.shared-card').forEach(elem => {
-            const cameraId = elem.dataset.cameraId;
-            
-            getCameraStatus(cameraId).then(status => {
-                const statusSpan = elem.querySelector('.shared-status');
-                if (statusSpan) {
-                    statusSpan.className = `shared-status ${status.status === 'active' ? 'status-active' : 'status-inactive'}`;
-                    statusSpan.textContent = status.status === 'active' ? '🟢 Active' : '🔴 Inactive';
-                }
-                
-                const lastSeenP = elem.querySelector('.shared-info p:last-child');
-                if (lastSeenP) {
-                    lastSeenP.innerHTML = `<strong>Last seen:</strong> ${status.last_seen}`;
                 }
             });
         });
