@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
@@ -465,7 +464,7 @@ async def upload_image(
                 user_id=1  # Assign to admin
             )
             db.add(camera)
-            db.flush()  # This assigns an ID without committing
+            db.flush()
             print(f"📸 Created new camera with ID: {camera.id}")
         else:
             print(f"📸 Found existing camera: {camera.name} (ID: {camera.id})")
@@ -476,7 +475,6 @@ async def upload_image(
         camera.last_seen = datetime.utcnow()
         print(f"📸 Updated last_seen from {old_last_seen} to {camera.last_seen}")
         
-        # Commit the changes
         db.commit()
         print(f"📸 Database committed successfully")
         
@@ -495,7 +493,7 @@ async def upload_image(
         
         if success:
             print(f"✅ Upload successful to S3: {filename}")
-            # Delete old images (keep only latest IMAGES_PER_CAMERA)
+            # Delete old images
             delete_old_images(camera_id, IMAGES_PER_CAMERA)
             print(f"✅ Upload complete for camera {camera_id}")
             return JSONResponse({"status": "success", "message": "Image uploaded"})
@@ -613,6 +611,14 @@ async def get_camera_status(
         "is_owner": is_owner,
         "can_edit": can_edit
     })
+
+@app.get("/debug")
+async def debug_session(request: Request):
+    """Debug endpoint to check session"""
+    return {
+        "session": dict(request.session),
+        "cookies": request.cookies
+    }
 
 @app.get("/debug/camera/{camera_id}")
 async def debug_camera(camera_id: str, db: Session = Depends(get_db)):
