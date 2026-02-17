@@ -6,15 +6,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use bcrypt for password hashing (works on all platforms)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use argon2 (no 72-byte limit)
+pwd_context = CryptContext(
+    schemes=["argon2"],
+    deprecated="auto",
+    argon2__default_memory_cost=102400,  # 100MB
+    argon2__default_time_cost=2,
+    argon2__default_parallelism=8
+)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt"""
+    """Hash a password using argon2"""
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
