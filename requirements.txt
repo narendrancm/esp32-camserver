@@ -11,3 +11,5 @@ passlib[bcrypt]
 python-jose[cryptography]
 requests
 itsdangerous
+argon2_cffi
+
