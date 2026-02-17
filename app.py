@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
 import os
-from pathlib import Path
-import uuid
 
 from config import SECRET_KEY, IMAGES_PER_CAMERA, CAMERA_TIMEOUT_MINUTES
 from models import Base, User, Camera, CameraShare, engine, get_db
@@ -144,22 +142,18 @@ async def logout(request: Request):
     return RedirectResponse(url="/login", status_code=302)
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(
-    request: Request, 
-    user: User = Depends(require_login), 
-    db: Session = Depends(get_db)
-):
-    # Cameras owned by user
+async def dashboard(request: Request, user: User = Depends(require_login), db: Session = Depends(get_db)):
+    # Get cameras owned by user
     owned_cameras = db.query(Camera).filter(Camera.user_id == user.id).all()
     
-    # Cameras shared with user
+    # Get cameras shared with user
     shared_cameras = db.query(Camera).join(
         CameraShare, Camera.id == CameraShare.camera_id
     ).filter(
         CameraShare.shared_with_user_id == user.id
     ).all()
     
-    # Combine all cameras
+    # Convert all cameras to dictionaries
     all_cameras = []
     
     # Add owned cameras
@@ -504,13 +498,13 @@ async def get_camera_images(
     user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
-    # Check if user has access to this camera (owner or shared)
+    # Check if user has access to this camera
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
     
-    # Check access
+    # Check access (owner or shared)
     is_owner = camera.user_id == user.id
     is_shared = db.query(CameraShare).filter(
         CameraShare.camera_id == camera.id,
@@ -546,13 +540,13 @@ async def get_camera_status(
     user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
-    # Check if user has access to this camera (owner or shared)
+    # Check if user has access to this camera
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
     
-    # Check access
+    # Check access (owner or shared)
     is_owner = camera.user_id == user.id
     is_shared = db.query(CameraShare).filter(
         CameraShare.camera_id == camera.id,
@@ -583,37 +577,20 @@ async def get_camera_status(
         else:
             last_seen_text = f"{seconds // 86400}d ago"
     
+    # Check edit permission
+    can_edit = is_owner or (is_shared and db.query(CameraShare).filter(
+        CameraShare.camera_id == camera.id,
+        CameraShare.shared_with_user_id == user.id,
+        CameraShare.can_edit == True
+    ).first() is not None)
+    
     return JSONResponse({
         "status": status,
         "last_seen": last_seen_text,
         "last_seen_datetime": camera.last_seen.isoformat() if camera.last_seen else None,
         "is_owner": is_owner,
-        "can_edit": is_owner or (is_shared and db.query(CameraShare).filter(
-            CameraShare.camera_id == camera.id,
-            CameraShare.shared_with_user_id == user.id,
-            CameraShare.can_edit == True
-        ).first() is not None)
+        "can_edit": can_edit
     })
-
-@app.get("/debug")
-async def debug_dashboard(request: Request, db: Session = Depends(get_db)):
-    """Debug endpoint to check what's in the database"""
-    user = get_current_user(request, db)
-    if not user:
-        return {"error": "Not logged in"}
-    
-    # Check cameras
-    owned = db.query(Camera).filter(Camera.user_id == user.id).all()
-    shared = db.query(Camera).join(CameraShare).filter(
-        CameraShare.shared_with_user_id == user.id
-    ).all()
-    
-    return {
-        "user": user.username,
-        "owned_cameras": [{"id": c.id, "camera_id": c.camera_id, "name": c.name} for c in owned],
-        "shared_cameras": [{"id": c.id, "camera_id": c.camera_id, "name": c.name} for c in shared],
-        "session": dict(request.session)
-    }
 
 if __name__ == "__main__":
     import uvicorn
