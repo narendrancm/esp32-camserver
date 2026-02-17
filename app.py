@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
 import os
+import traceback
 
 from config import SECRET_KEY, IMAGES_PER_CAMERA, CAMERA_TIMEOUT_MINUTES
 from models import Base, User, Camera, CameraShare, engine, get_db
@@ -37,6 +38,7 @@ def create_default_admin():
         )
         db.add(admin_user)
         db.commit()
+        print("✓ Default admin user created")
     db.close()
 
 create_default_admin()
@@ -444,11 +446,17 @@ async def upload_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    """Upload image from ESP32-CAM"""
+    print(f"\n📸 ===== UPLOAD RECEIVED =====")
+    print(f"📸 Camera ID: {camera_id}")
+    print(f"📸 File name: {file.filename}")
+    
     try:
         # Find or create camera
         camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
         
         if not camera:
+            print(f"📸 Camera {camera_id} not found, creating new...")
             # Auto-create camera if it doesn't exist
             camera = Camera(
                 camera_id=camera_id,
@@ -457,36 +465,50 @@ async def upload_image(
                 user_id=1  # Assign to admin
             )
             db.add(camera)
+            db.flush()  # This assigns an ID without committing
+            print(f"📸 Created new camera with ID: {camera.id}")
+        else:
+            print(f"📸 Found existing camera: {camera.name} (ID: {camera.id})")
+            print(f"📸 Old last_seen: {camera.last_seen}")
         
         # Update last_seen timestamp
+        old_last_seen = camera.last_seen
         camera.last_seen = datetime.utcnow()
+        print(f"📸 Updated last_seen from {old_last_seen} to {camera.last_seen}")
+        
+        # Commit the changes
         db.commit()
+        print(f"📸 Database committed successfully")
         
         # Read file content
         file_content = await file.read()
+        print(f"📸 Read {len(file_content)} bytes from file")
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{camera_id}/{timestamp}.jpg"
+        print(f"📸 Generated filename: {filename}")
         
         # Upload to S3
+        print(f"📸 Uploading to S3...")
         success = upload_to_s3(file_content, filename)
         
         if success:
+            print(f"✅ Upload successful to S3: {filename}")
             # Delete old images (keep only latest IMAGES_PER_CAMERA)
             delete_old_images(camera_id, IMAGES_PER_CAMERA)
-            
-            print(f"✓ Uploaded to S3: {filename}")
+            print(f"✅ Upload complete for camera {camera_id}")
             return JSONResponse({"status": "success", "message": "Image uploaded"})
         else:
-            print(f"✗ S3 upload failed: {filename}")
+            print(f"❌ S3 upload failed: {filename}")
             return JSONResponse(
                 {"status": "error", "message": "S3 upload failed"},
                 status_code=500
             )
             
     except Exception as e:
-        print(f"✗ Upload error: {str(e)}")
+        print(f"❌ Upload error: {str(e)}")
+        traceback.print_exc()
         return JSONResponse(
             {"status": "error", "message": str(e)},
             status_code=500
@@ -591,6 +613,30 @@ async def get_camera_status(
         "is_owner": is_owner,
         "can_edit": can_edit
     })
+
+@app.get("/debug/camera/{camera_id}")
+async def debug_camera(camera_id: str, db: Session = Depends(get_db)):
+    """Debug endpoint to check camera details"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    if not camera:
+        return {"error": "Camera not found"}
+    
+    time_diff = (datetime.utcnow() - camera.last_seen).total_seconds() if camera.last_seen else None
+    timeout_seconds = CAMERA_TIMEOUT_MINUTES * 60
+    
+    return {
+        "camera_id": camera.camera_id,
+        "name": camera.name,
+        "location": camera.location,
+        "user_id": camera.user_id,
+        "last_seen": camera.last_seen.isoformat() if camera.last_seen else None,
+        "last_seen_raw": str(camera.last_seen),
+        "current_time": datetime.utcnow().isoformat(),
+        "time_diff_seconds": time_diff,
+        "timeout_seconds": timeout_seconds,
+        "is_active": time_diff < timeout_seconds if time_diff else False,
+        "CAMERA_TIMEOUT_MINUTES": CAMERA_TIMEOUT_MINUTES
+    }
 
 if __name__ == "__main__":
     import uvicorn
