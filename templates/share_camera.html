@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Share Camera - Surveillance Cam</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        h2, h3 {
+            color: #444;
+            margin-top: 25px;
+        }
+        .nav {
+            margin-bottom: 25px;
+        }
+        .nav a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        .nav a:hover {
+            background: #f0f0f0;
+        }
+        .camera-info {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .camera-info p {
+            margin: 8px 0;
+            color: #555;
+        }
+        .camera-info strong {
+            color: #333;
+            width: 100px;
+            display: inline-block;
+        }
+        .share-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 25px 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        select, input[type="checkbox"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        select {
+            width: 100%;
+            max-width: 300px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checkbox-group label {
+            display: inline;
+            margin: 0;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #5a67d8;
+        }
+        .btn-danger {
+            background: #e53e3e;
+        }
+        .btn-danger:hover {
+            background: #c53030;
+        }
+        .share-list {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+        }
+        .share-item {
+            background: white;
+            border: 1px solid #e0e0e0;
+            padding: 15px 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: box-shadow 0.3s;
+        }
+        .share-item:hover {
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .user-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 16px;
+        }
+        .user-email {
+            color: #666;
+            font-size: 14px;
+            margin-top: 3px;
+        }
+        .edit-badge {
+            background: #48bb78;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+        .share-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .empty-message {
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .info-text {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/dashboard">← Back to Dashboard</a>
+        </div>
+        
+        <h1>🔗 Share Camera</h1>
+        
+        <div class="camera-info">
+            <p><strong>Camera ID:</strong> {{ camera.camera_id }}</p>
+            <p><strong>Name:</strong> {{ camera.name }}</p>
+            <p><strong>Location:</strong> {{ camera.location }}</p>
+        </div>
+        
+        <div class="share-form">
+            <h3>Share with another user</h3>
+            <form method="POST">
+                <div class="form-group">
+                    <label for="user_id">Select User:</label>
+                    <select name="user_id" id="user_id" required>
+                        <option value="">Choose a user...</option>
+                        {% for other in other_users %}
+                        <option value="{{ other.id }}">{{ other.username }} ({{ other.email }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="can_edit" id="can_edit">
+                    <label for="can_edit">Allow user to edit camera settings (name, location)</label>
+                </div>
+                
+                <button type="submit" class="btn">Share Camera</button>
+            </form>
+            <div class="info-text">
+                <p>📌 Users with view access can see all images from this camera.</p>
+                <p>📌 Users with edit access can also modify camera name and location.</p>
+            </div>
+        </div>
+        
+        <h3>Currently Shared With:</h3>
+        {% if shares %}
+        <ul class="share-list">
+            {% for share in shares %}
+            <li class="share-item">
+                <div class="user-info">
+                    <span class="user-name">{{ share.shared_user.username }}</span>
+                    <span class="user-email">{{ share.shared_user.email }}</span>
+                    {% if share.can_edit %}
+                    <span class="edit-badge">Can Edit</span>
+                    {% endif %}
+                </div>
+                <div class="share-actions">
+                    <form method="POST" action="/cameras/{{ camera.camera_id }}/unshare/{{ share.shared_user.id }}" style="display: inline;">
+                        <button type="submit" class="btn btn-danger">Remove</button>
+                    </form>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty-message">This camera hasn't been shared with anyone yet.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
