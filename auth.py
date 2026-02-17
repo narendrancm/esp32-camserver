@@ -6,13 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use argon2 (no 72-byte limit)
+# Use argon2 with CORRECT parameter names for passlib
 pwd_context = CryptContext(
     schemes=["argon2"],
     deprecated="auto",
-    argon2__default_memory_cost=102400,  # 100MB
-    argon2__default_time_cost=2,
-    argon2__default_parallelism=8
+    # Correct parameter names for passlib's argon2 implementation
+    argon2__memory_cost=102400,  # 100MB (not default_memory_cost)
+    argon2__time_cost=2,          # Number of iterations
+    argon2__parallelism=8         # Number of parallel threads
 )
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
