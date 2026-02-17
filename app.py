@@ -159,72 +159,36 @@ async def dashboard(
         CameraShare.shared_with_user_id == user.id
     ).all()
     
-    # Convert owned cameras to dictionaries
-    owned_list = []
+    # Combine all cameras
+    all_cameras = []
+    
+    # Add owned cameras
     for camera in owned_cameras:
-        # Determine status
-        status = "inactive"
-        last_seen_text = "Never"
-        if camera.last_seen:
-            time_diff = datetime.utcnow() - camera.last_seen
-            timeout = timedelta(minutes=CAMERA_TIMEOUT_MINUTES)
-            status = "active" if time_diff < timeout else "inactive"
-            
-            seconds = int(time_diff.total_seconds())
-            if seconds < 60:
-                last_seen_text = f"{seconds}s ago"
-            elif seconds < 3600:
-                last_seen_text = f"{seconds // 60}m ago"
-            elif seconds < 86400:
-                last_seen_text = f"{seconds // 3600}h ago"
-            else:
-                last_seen_text = f"{seconds // 86400}d ago"
-        
-        owned_list.append({
+        all_cameras.append({
             'id': camera.id,
             'camera_id': camera.camera_id,
             'name': camera.name,
             'location': camera.location,
-            'status': status,
-            'last_seen_text': last_seen_text,
+            'is_active': camera.is_active,
             'last_seen': camera.last_seen.isoformat() if camera.last_seen else None,
             'created_at': camera.created_at.isoformat() if camera.created_at else None,
-            'role': 'owner'
+            'role': 'owner',
+            'can_edit': True
         })
     
-    # Convert shared cameras to dictionaries
-    shared_list = []
+    # Add shared cameras
     for camera in shared_cameras:
         share_info = db.query(CameraShare).filter(
             CameraShare.camera_id == camera.id,
             CameraShare.shared_with_user_id == user.id
         ).first()
         
-        # Determine status
-        status = "inactive"
-        last_seen_text = "Never"
-        if camera.last_seen:
-            time_diff = datetime.utcnow() - camera.last_seen
-            timeout = timedelta(minutes=CAMERA_TIMEOUT_MINUTES)
-            status = "active" if time_diff < timeout else "inactive"
-            
-            seconds = int(time_diff.total_seconds())
-            if seconds < 60:
-                last_seen_text = f"{seconds}s ago"
-            elif seconds < 3600:
-                last_seen_text = f"{seconds // 60}m ago"
-            elif seconds < 86400:
-                last_seen_text = f"{seconds // 3600}h ago"
-            else:
-                last_seen_text = f"{seconds // 86400}d ago"
-        
-        shared_list.append({
+        all_cameras.append({
             'id': camera.id,
             'camera_id': camera.camera_id,
             'name': camera.name,
             'location': camera.location,
-            'status': status,
-            'last_seen_text': last_seen_text,
+            'is_active': camera.is_active,
             'last_seen': camera.last_seen.isoformat() if camera.last_seen else None,
             'created_at': camera.created_at.isoformat() if camera.created_at else None,
             'role': 'viewer',
@@ -235,8 +199,7 @@ async def dashboard(
         "request": request,
         "session": request.session,
         "user": user,
-        "owned_cameras": owned_list,
-        "shared_cameras": shared_list
+        "cameras": all_cameras
     })
 
 @app.get("/cameras/new", response_class=HTMLResponse)
@@ -631,6 +594,26 @@ async def get_camera_status(
             CameraShare.can_edit == True
         ).first() is not None)
     })
+
+@app.get("/debug")
+async def debug_dashboard(request: Request, db: Session = Depends(get_db)):
+    """Debug endpoint to check what's in the database"""
+    user = get_current_user(request, db)
+    if not user:
+        return {"error": "Not logged in"}
+    
+    # Check cameras
+    owned = db.query(Camera).filter(Camera.user_id == user.id).all()
+    shared = db.query(Camera).join(CameraShare).filter(
+        CameraShare.shared_with_user_id == user.id
+    ).all()
+    
+    return {
+        "user": user.username,
+        "owned_cameras": [{"id": c.id, "camera_id": c.camera_id, "name": c.name} for c in owned],
+        "shared_cameras": [{"id": c.id, "camera_id": c.camera_id, "name": c.name} for c in shared],
+        "session": dict(request.session)
+    }
 
 if __name__ == "__main__":
     import uvicorn
