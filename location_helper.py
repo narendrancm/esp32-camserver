@@ -28,10 +28,14 @@ class LocationDetector:
                 return {
                     "ip": ip_address or "unknown",
                     "city": "Local Network",
-                    "country": "Private",
+                    "region": "Local",
+                    "country": "Network",
+                    "country_code": "N/A",
                     "latitude": None,
                     "longitude": None,
-                    "error": "Private IP - using network location"
+                    "success": False,
+                    "error": "Private IP - using network location",
+                    "detected_location": "Local Network"
                 }
         
         try:
@@ -40,6 +44,17 @@ class LocationDetector:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "success":
+                    # Build full location string
+                    location_parts = []
+                    if data.get("city"):
+                        location_parts.append(data["city"])
+                    if data.get("regionName"):
+                        location_parts.append(data["regionName"])
+                    if data.get("country"):
+                        location_parts.append(data["country"])
+                    
+                    detected_location = ", ".join(location_parts) if location_parts else "Unknown Location"
+                    
                     return {
                         "ip": ip_address,
                         "city": data.get("city", "Unknown"),
@@ -50,7 +65,8 @@ class LocationDetector:
                         "longitude": data.get("lon"),
                         "isp": data.get("isp", "Unknown"),
                         "source": "ip-api.com",
-                        "success": True
+                        "success": True,
+                        "detected_location": detected_location
                     }
         except Exception as e:
             print(f"Primary API error: {e}")
@@ -60,6 +76,18 @@ class LocationDetector:
             response = requests.get(self.fallback_url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
+                
+                # Build full location string
+                location_parts = []
+                if data.get("city"):
+                    location_parts.append(data["city"])
+                if data.get("region"):
+                    location_parts.append(data["region"])
+                if data.get("country_name"):
+                    location_parts.append(data["country_name"])
+                
+                detected_location = ", ".join(location_parts) if location_parts else "Unknown Location"
+                
                 return {
                     "ip": data.get("ip", ip_address),
                     "city": data.get("city", "Unknown"),
@@ -69,7 +97,8 @@ class LocationDetector:
                     "latitude": data.get("latitude"),
                     "longitude": data.get("longitude"),
                     "source": "ipapi.co",
-                    "success": True
+                    "success": True,
+                    "detected_location": detected_location
                 }
         except Exception as e:
             print(f"Fallback API error: {e}")
@@ -77,41 +106,15 @@ class LocationDetector:
         return {
             "ip": ip_address,
             "city": "Unknown",
+            "region": "Unknown",
             "country": "Unknown",
+            "country_code": "",
             "latitude": None,
             "longitude": None,
             "success": False,
-            "error": "Could not detect location"
+            "error": "Could not detect location",
+            "detected_location": "Location Unknown"
         }
-    
-    def generate_location_name(self, location_data: Dict) -> str:
-        """Generate a human-readable location name"""
-        if not location_data.get("success", False):
-            return "Unknown Location"
-        
-        parts = []
-        if location_data.get("city") and location_data["city"] != "Unknown":
-            parts.append(location_data["city"])
-        if location_data.get("region") and location_data["region"] != "Unknown":
-            parts.append(location_data["region"])
-        if location_data.get("country") and location_data["country"] != "Unknown":
-            parts.append(location_data["country"])
-        
-        if parts:
-            return ", ".join(parts)
-        return "Unknown Location"
-    
-    def generate_camera_name(self, location_data: Dict, camera_id: str) -> str:
-        """Generate a friendly camera name based on location"""
-        if not location_data.get("success", False):
-            return f"Camera {camera_id}"
-        
-        if location_data.get("city") and location_data["city"] != "Unknown":
-            return f"{location_data['city']} Camera"
-        elif location_data.get("country") and location_data["country"] != "Unknown":
-            return f"{location_data['country']} Camera"
-        else:
-            return f"Camera {camera_id}"
 
 # Global instance
 location_detector = LocationDetector()
