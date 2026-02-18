@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - ESP32-CAM-Surveillance{% endblock %}
+{% block title %}Dashboard - ESP32-CAM Surveillance{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -151,6 +151,7 @@
         text-decoration: none;
         display: inline-block;
         transition: transform 0.2s;
+        color: white;
     }
     
     .camera-actions .btn:hover {
@@ -295,26 +296,6 @@
         }
     }
     
-    // Detect location for camera
-    async function detectLocation(cameraId) {
-        try {
-            const response = await fetch(`/camera/${cameraId}/detect-location`, {
-                method: 'POST'
-            });
-            const data = await response.json();
-            
-            if (data.success) {
-                alert(`📍 Location detected: ${data.detected_location}`);
-                location.reload(); // Refresh to show new location
-            } else {
-                alert('Failed to detect location: ' + (data.error || 'Unknown error'));
-            }
-        } catch (error) {
-            console.error('Error detecting location:', error);
-            alert('Error detecting location');
-        }
-    }
-    
     // Render camera card
     function renderCameraCard(camera, images, status) {
         const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
@@ -369,26 +350,21 @@
         let actionsHtml = '';
         
         // Refresh button for everyone
-        actionsHtml += `<button onclick="loadCameraImages('${camera.camera_id}').then(imgs => location.reload())" class="btn" style="background: #3498db; color: white;">🔄 Refresh</button>`;
+        actionsHtml += `<button onclick="loadCameraImages('${camera.camera_id}').then(imgs => location.reload())" class="btn" style="background: #3498db;">🔄 Refresh</button>`;
         
         // Edit button (if owner or has edit permission)
         if (camera.role === 'owner' || camera.can_edit) {
-            actionsHtml += `<a href="/cameras/${camera.camera_id}/edit" class="btn" style="background: #f39c12; color: white; text-decoration: none;">✏️ Edit</a>`;
+            actionsHtml += `<a href="/cameras/${camera.camera_id}/edit" class="btn" style="background: #f39c12;">✏️ Edit</a>`;
         }
         
         // Share button (only for owner)
         if (camera.role === 'owner') {
-            actionsHtml += `<a href="/cameras/${camera.camera_id}/share" class="btn" style="background: #9b59b6; color: white; text-decoration: none;">🔗 Share</a>`;
-        }
-        
-        // Location detect button (only for owner)
-        if (camera.role === 'owner') {
-            actionsHtml += `<button onclick="detectLocation('${camera.camera_id}')" class="btn" style="background: #2ecc71; color: white;">📍 Locate</button>`;
+            actionsHtml += `<a href="/cameras/${camera.camera_id}/share" class="btn" style="background: #9b59b6;">🔗 Share</a>`;
         }
         
         // Delete button (only for owner)
         if (camera.role === 'owner') {
-            actionsHtml += `<button onclick="deleteCamera('${camera.camera_id}')" class="btn" style="background: #e74c3c; color: white;">🗑️ Delete</button>`;
+            actionsHtml += `<button onclick="deleteCamera('${camera.camera_id}')" class="btn" style="background: #e74c3c;">🗑️ Delete</button>`;
         }
         
         // Add role badge if shared
