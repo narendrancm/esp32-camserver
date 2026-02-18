@@ -43,6 +43,19 @@
         display: inline-block;
     }
     
+    .info-box {
+        background: #e8f4f8;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        border-left: 4px solid #9b59b6;
+    }
+    
+    .info-box p {
+        margin: 0;
+        color: #2c3e50;
+    }
+    
     .share-form {
         background: #f8f9fa;
         padding: 25px;
@@ -146,13 +159,10 @@
         border-radius: 8px;
     }
     
-    .info-text {
+    .help-text {
         color: #666;
-        font-size: 14px;
-        margin-top: 15px;
-        padding: 10px;
-        background: #e8f4f8;
-        border-radius: 6px;
+        font-size: 13px;
+        margin-top: 10px;
     }
 </style>
 {% endblock %}
@@ -165,6 +175,16 @@
     </div>
     
     <div class="card">
+        <div class="info-box">
+            <p>
+                <strong>🔗 Sharing this camera</strong> allows other users to see images from this camera in their dashboard.
+                They won't be able to edit camera settings unless you give them permission.
+            </p>
+            <p style="margin-top: 10px; font-size: 13px;">
+                📌 Shared cameras appear in the recipient's dashboard automatically - they don't need to add the camera ID.
+            </p>
+        </div>
+        
         <div class="camera-info">
             <p><strong>Camera ID:</strong> {{ camera.camera_id }}</p>
             <p><strong>Name:</strong> {{ camera.name }}</p>
@@ -186,15 +206,16 @@
                 
                 <div class="form-group checkbox-group">
                     <input type="checkbox" name="can_edit" id="can_edit">
-                    <label for="can_edit">Allow user to edit camera settings</label>
+                    <label for="can_edit">Allow user to edit camera settings (name, location)</label>
                 </div>
                 
                 <button type="submit" class="btn">Share Camera</button>
             </form>
             
-            <div class="info-text">
+            <div class="help-text">
                 <p>📌 Users with view access can see all images from this camera.</p>
-                <p>📌 Users with edit access can also modify camera name and location.</p>
+                <p>📌 Users with edit access can also modify camera name.</p>
+                <p>📌 Shared users will see this camera in their dashboard immediately.</p>
             </div>
         </div>
         
