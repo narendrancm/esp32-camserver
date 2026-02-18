@@ -34,6 +34,54 @@
         flex: 1;
         text-align: center;
     }
+    
+    .location-info {
+        background: #e8f4f8;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #3498db;
+    }
+    
+    .location-info h4 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+    }
+    
+    .location-info p {
+        color: #34495e;
+        margin: 5px 0;
+    }
+    
+    .error-box {
+        background: #fee;
+        color: #c33;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #e74c3c;
+    }
+    
+    .error-box h4 {
+        color: #c33;
+        margin-bottom: 10px;
+    }
+    
+    .error-box p {
+        color: #666;
+        margin: 5px 0;
+    }
+    
+    .help-text {
+        color: #666;
+        font-size: 13px;
+        margin-top: 5px;
+    }
+    
+    .info-icon {
+        color: #3498db;
+        margin-right: 5px;
+    }
 </style>
 {% endblock %}
 
@@ -41,13 +89,33 @@
 <div class="edit-container">
     <div class="edit-header">
         <h2>{{ action }} Camera</h2>
-        <p>{% if camera %}Edit camera details{% else %}Add a new ESP32-CAM to your system{% endif %}</p>
+        <p>{% if camera %}Edit camera name{% else %}Add a new ESP32-CAM to your system{% endif %}</p>
     </div>
     
     <div class="card">
         {% if error %}
-        <div class="alert alert-error">
-            {{ error }}
+        <div class="error-box">
+            <h4>⚠️ {{ error }}</h4>
+            {% if 'registered by another user' in error %}
+            <p style="margin-top: 10px;">
+                🔗 If you need access to this camera, ask the owner to share it with you.
+                Once shared, it will appear automatically in your dashboard.
+            </p>
+            <p style="margin-top: 5px; font-size: 13px;">
+                <strong>How sharing works:</strong> The camera owner can go to the camera page and click the "Share" button to grant you access.
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if camera and camera.detected_location %}
+        <div class="location-info">
+            <h4>📍 Auto-Detected Location</h4>
+            <p><strong>Location:</strong> {{ camera.detected_location }}</p>
+            {% if camera.city %}<p><strong>City:</strong> {{ camera.city }}</p>{% endif %}
+            {% if camera.region %}<p><strong>Region:</strong> {{ camera.region }}</p>{% endif %}
+            {% if camera.country %}<p><strong>Country:</strong> {{ camera.country }}</p>{% endif %}
+            <p class="help-text"><span class="info-icon">ℹ️</span> Location is auto-detected and updates automatically</p>
         </div>
         {% endif %}
         
@@ -56,27 +124,27 @@
             <div class="form-group">
                 <label for="camera_id">Camera ID *</label>
                 <input type="text" id="camera_id" name="camera_id" required 
-                       placeholder="e.g., cam1, front_door, garage_cam"
+                       placeholder="e.g., home_entrance_01, office_parking_01"
                        pattern="[a-zA-Z0-9_-]+"
-                       title="Only letters, numbers, underscores, and hyphens allowed">
-                <small style="color: #666; display: block; margin-top: 5px;">
-                    This ID must match the cameraId in your ESP32-CAM code
-                </small>
+                       title="Only letters, numbers, underscores, and hyphens allowed"
+                       value="{{ request.form.get('camera_id', '') }}">
+                <div class="help-text">
+                    <span class="info-icon">🔑</span> This ID must match the cameraId in your ESP32-CAM code
+                </div>
+                <div class="help-text" style="margin-top: 8px; color: #3498db;">
+                    <span class="info-icon">ℹ️</span> Each physical camera has a unique ID. If the ID already exists, you need to be added as a shared user.
+                </div>
             </div>
             {% endif %}
             
             <div class="form-group">
                 <label for="name">Camera Name *</label>
                 <input type="text" id="name" name="name" required 
-                       value="{% if camera %}{{ camera.name }}{% endif %}"
-                       placeholder="e.g., Front Door Camera">
-            </div>
-            
-            <div class="form-group">
-                <label for="location">Location</label>
-                <input type="text" id="location" name="location" 
-                       value="{% if camera %}{{ camera.location }}{% endif %}"
-                       placeholder="e.g., Main Entrance, Garage, Backyard">
+                       value="{% if camera %}{{ camera.name }}{% else %}{{ request.form.get('name', '') }}{% endif %}"
+                       placeholder="e.g., Front Door Camera, Parking Lot Camera">
+                <div class="help-text">
+                    <span class="info-icon">🏷️</span> Choose a friendly name that helps you identify this camera
+                </div>
             </div>
             
             <div class="form-actions">
