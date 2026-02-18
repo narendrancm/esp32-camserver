@@ -20,23 +20,30 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    cameras = relationship("Camera", back_populates="owner")
-    shared_cameras = relationship("CameraShare", back_populates="shared_user")
+    cameras = relationship("Camera", back_populates="owner", cascade="all, delete-orphan")
+    shared_cameras = relationship("CameraShare", back_populates="shared_user", cascade="all, delete-orphan")
 
 class Camera(Base):
     __tablename__ = "cameras"
     
     id = Column(Integer, primary_key=True, index=True)
     camera_id = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, nullable=False)
-    location = Column(String)  # Auto-detected or manual
-    city = Column(String)      # Auto-detected city
-    region = Column(String)     # Auto-detected region/state
-    country = Column(String)   # Auto-detected country
-    latitude = Column(Float, nullable=True)   # GPS coordinates
-    longitude = Column(Float, nullable=True)  # GPS coordinates
-    ip_address = Column(String) # Last known IP
-    first_seen_ip = Column(String)  # IP on first connection
+    
+    # User-defined name (can be changed by user)
+    name = Column(String, nullable=False, default="New Camera")
+    
+    # Auto-detected location info (read-only, updated automatically)
+    detected_location = Column(String)  # Full location string (e.g., "Mumbai, Maharashtra, India")
+    city = Column(String)                # Auto-detected city
+    region = Column(String)              # Auto-detected region/state
+    country = Column(String)             # Auto-detected country
+    country_code = Column(String)         # Country code (IN, US, etc.)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    
+    # Technical info
+    ip_address = Column(String)          # Last known IP
+    first_seen_ip = Column(String)       # IP on first connection
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     last_seen = Column(DateTime, nullable=True)
@@ -44,7 +51,7 @@ class Camera(Base):
     
     # Relationships
     owner = relationship("User", back_populates="cameras")
-    shares = relationship("CameraShare", back_populates="camera")
+    shares = relationship("CameraShare", back_populates="camera", cascade="all, delete-orphan")
 
 class CameraShare(Base):
     __tablename__ = "camera_shares"
@@ -62,7 +69,7 @@ class CameraShare(Base):
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# Dependency
+# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
