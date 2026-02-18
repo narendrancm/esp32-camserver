@@ -231,20 +231,47 @@ async def create_camera(
     name = form.get("name")
     
     # Check if camera_id already exists
-    if db.query(Camera).filter(Camera.camera_id == camera_id).first():
-        return templates.TemplateResponse("edit_camera.html", {
-            "request": request,
-            "session": request.session,
-            "user": user,
-            "camera": None,
-            "action": "Add",
-            "error": "Camera ID already exists"
-        })
+    existing_camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    
+    if existing_camera:
+        # Check if this camera is already shared with the user
+        is_shared = db.query(CameraShare).filter(
+            CameraShare.camera_id == existing_camera.id,
+            CameraShare.shared_with_user_id == user.id
+        ).first() is not None
+        
+        if is_shared:
+            # Camera is already shared - just go to dashboard
+            return RedirectResponse(url="/dashboard", status_code=302)
+        else:
+            # Camera exists but not shared
+            return templates.TemplateResponse("edit_camera.html", {
+                "request": request,
+                "session": request.session,
+                "user": user,
+                "camera": None,
+                "action": "Add",
+                "error": f"Camera '{camera_id}' is registered by another user. Please ask them to share it with you."
+            })
+    
+    # Camera doesn't exist - create new one
+    # Auto-detect location from IP (use request client IP)
+    client_ip = request.client.host if request else None
+    location_data = location_detector.detect_location_from_ip(client_ip)
     
     new_camera = Camera(
         camera_id=camera_id,
         name=name,
-        user_id=user.id
+        detected_location=location_data.get("detected_location"),
+        city=location_data.get("city"),
+        region=location_data.get("region"),
+        country=location_data.get("country"),
+        country_code=location_data.get("country_code"),
+        latitude=location_data.get("latitude"),
+        longitude=location_data.get("longitude"),
+        ip_address=client_ip,
+        first_seen_ip=client_ip,
+        user_id=user.id  # This user becomes the owner
     )
     db.add(new_camera)
     db.commit()
@@ -313,7 +340,6 @@ async def update_camera(
     
     form = await request.form()
     camera.name = form.get("name")
-    # Note: detected_location is NOT updated here - it's auto-detected only
     db.commit()
     
     return RedirectResponse(url="/dashboard", status_code=302)
@@ -523,7 +549,7 @@ async def upload_image(
             
             camera = Camera(
                 camera_id=camera_id,
-                name=f"Camera {camera_id}",  # Default name, user can change later
+                name=f"Camera {camera_id}",
                 detected_location=location_data.get("detected_location"),
                 city=location_data.get("city"),
                 region=location_data.get("region"),
@@ -543,15 +569,6 @@ async def upload_image(
             if camera.ip_address != client_ip:
                 print(f"📸 IP changed from {camera.ip_address} to {client_ip}")
                 camera.ip_address = client_ip
-                
-                # Optionally re-detect location if IP changed significantly
-                # You can enable this if cameras are mobile
-                # location_data = location_detector.detect_location_from_ip(client_ip)
-                # if location_data.get("success"):
-                #     camera.detected_location = location_data.get("detected_location")
-                #     camera.city = location_data.get("city")
-                #     camera.region = location_data.get("region")
-                #     camera.country = location_data.get("country")
         
         # Update last_seen timestamp
         old_last_seen = camera.last_seen
