@@ -445,7 +445,7 @@ async def upload_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Upload image from ESP32-CAM"""
+    """Upload image from ESP32-CAM - KEEPS ALL IMAGES FOREVER"""
     print(f"\n📸 ===== UPLOAD RECEIVED =====")
     print(f"📸 Camera ID: {camera_id}")
     print(f"📸 File name: {file.filename}")
@@ -493,8 +493,11 @@ async def upload_image(
         
         if success:
             print(f"✅ Upload successful to S3: {filename}")
-            # Delete old images
-            delete_old_images(camera_id, IMAGES_PER_CAMERA)
+            
+            # DELETION DISABLED - Keeping all images for surveillance
+            print(f"📸 SURVEILLANCE MODE: Keeping ALL images for camera {camera_id}")
+            # delete_old_images(camera_id, IMAGES_PER_CAMERA)  # ← DISABLED
+            
             print(f"✅ Upload complete for camera {camera_id}")
             return JSONResponse({"status": "success", "message": "Image uploaded"})
         else:
@@ -518,6 +521,7 @@ async def get_camera_images(
     user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
+    """Get images for a camera - returns ALL images (paginated for performance)"""
     # Check if user has access to this camera
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     
@@ -534,8 +538,12 @@ async def get_camera_images(
     if not (is_owner or is_shared):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Get images from S3
-    images = list_camera_images(camera_id, IMAGES_PER_CAMERA)
+    # Get images from S3 (get more for display - can increase this)
+    # You can adjust this number based on how many you want to show at once
+    display_limit = 50  # Show last 50 images in dashboard
+    images = list_camera_images(camera_id, display_limit)
+    
+    print(f"📸 Returning {len(images)} images for camera {camera_id}")
     
     # Generate presigned URLs
     image_data = []
@@ -551,7 +559,8 @@ async def get_camera_images(
     
     return JSONResponse({
         "images": image_data,
-        "camera_id": camera_id
+        "camera_id": camera_id,
+        "total_images": len(image_data)  # Add total count
     })
 
 @app.get("/api/camera/{camera_id}/status")
@@ -643,6 +652,60 @@ async def debug_camera(camera_id: str, db: Session = Depends(get_db)):
         "is_active": time_diff < timeout_seconds if time_diff else False,
         "CAMERA_TIMEOUT_MINUTES": CAMERA_TIMEOUT_MINUTES
     }
+
+@app.get("/api/camera/{camera_id}/all-images")
+async def get_all_camera_images(
+    camera_id: str,
+    user: User = Depends(require_login),
+    db: Session = Depends(get_db),
+    page: int = 1,
+    per_page: int = 100
+):
+    """Get ALL images for a camera with pagination"""
+    # Check if user has access to this camera
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    # Check access (owner or shared)
+    is_owner = camera.user_id == user.id
+    is_shared = db.query(CameraShare).filter(
+        CameraShare.camera_id == camera.id,
+        CameraShare.shared_with_user_id == user.id
+    ).first() is not None
+    
+    if not (is_owner or is_shared):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get ALL images from S3 (no limit in the function call)
+    all_images = list_camera_images(camera_id, None)  # Pass None to get all
+    
+    # Calculate pagination
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    paginated_images = all_images[start_idx:end_idx]
+    
+    # Generate presigned URLs
+    image_data = []
+    for img in paginated_images:
+        url = get_presigned_url(img['key'])
+        if url:
+            image_data.append({
+                'url': url,
+                'timestamp': img['timestamp'].isoformat(),
+                'size': img['size'],
+                'key': img['key']
+            })
+    
+    return JSONResponse({
+        "images": image_data,
+        "camera_id": camera_id,
+        "total_images": len(all_images),
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (len(all_images) + per_page - 1) // per_page
+    })
 
 if __name__ == "__main__":
     import uvicorn
