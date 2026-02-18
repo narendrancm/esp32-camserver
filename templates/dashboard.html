@@ -28,6 +28,12 @@
         border-radius: 15px;
         padding: 25px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        transition: transform 0.2s;
+    }
+    
+    .camera-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.2);
     }
     
     .camera-header {
@@ -41,6 +47,9 @@
         color: #333;
         font-size: 22px;
         margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
     
     .camera-info p {
@@ -130,6 +139,7 @@
         text-align: center;
         padding: 40px;
         color: #999;
+        font-style: italic;
     }
     
     .camera-actions {
@@ -152,6 +162,7 @@
         display: inline-block;
         transition: transform 0.2s;
         color: white;
+        font-weight: 500;
     }
     
     .camera-actions .btn:hover {
@@ -162,6 +173,7 @@
         text-align: center;
         padding: 40px;
         color: #666;
+        font-size: 16px;
     }
     
     .empty-state {
@@ -189,16 +201,51 @@
         color: white;
         margin-left: 8px;
         display: inline-block;
+        vertical-align: middle;
     }
     
     .location-info {
-        font-size: 13px;
+        font-size: 14px;
         color: #555;
-        margin-top: 5px;
+        margin: 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 5px;
     }
     
     .location-icon {
-        margin-right: 4px;
+        font-size: 16px;
+        min-width: 20px;
+    }
+    
+    .location-source-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        margin-left: 8px;
+        background: #e0e0e0;
+        color: #666;
+    }
+    
+    .source-auto {
+        background: #3498db20;
+        color: #3498db;
+    }
+    
+    .source-manual {
+        background: #2ecc7120;
+        color: #27ae60;
+    }
+    
+    .last-seen {
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .debug-info {
+        font-size: 11px;
+        color: #999;
+        margin-top: 5px;
     }
 </style>
 {% endblock %}
@@ -274,13 +321,19 @@
             return data;
         } catch (error) {
             console.error('Error getting camera status:', error);
-            return { status: 'inactive', last_seen: 'Unknown', can_edit: false };
+            return { 
+                status: 'inactive', 
+                last_seen: 'Unknown', 
+                can_edit: false,
+                display_location: null,
+                location_source: 'auto'
+            };
         }
     }
     
     // Delete camera
     async function deleteCamera(cameraId) {
-        if (!confirm('Are you sure you want to delete this camera?')) {
+        if (!confirm('Are you sure you want to delete this camera? This action cannot be undone.')) {
             return;
         }
         
@@ -301,9 +354,10 @@
         const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
         const statusText = status.status === 'active' ? '🟢 Active' : '🔴 Inactive';
         
-        // FORCE only the first 6 images
+        // FORCE only the first 6 images (extra safety)
         const displayImages = images.slice(0, 6);
         
+        // Build images HTML
         let imagesHtml = '';
         if (displayImages.length > 0) {
             imagesHtml = '<div class="images-grid">';
@@ -331,19 +385,29 @@
             `;
         }
         
-        // Build location display
-        let locationHtml = '';
-        if (camera.detected_location && camera.detected_location !== 'Detecting...' && camera.detected_location !== 'Unknown Location') {
-            locationHtml = `<p class="location-info"><span class="location-icon">📍</span> ${camera.detected_location}</p>`;
-        } else if (camera.city && camera.country) {
-            // Build from components if full location not available
-            let parts = [];
-            if (camera.city) parts.push(camera.city);
-            if (camera.region) parts.push(camera.region);
-            if (camera.country) parts.push(camera.country);
-            locationHtml = `<p class="location-info"><span class="location-icon">📍</span> ${parts.join(', ')}</p>`;
+        // Determine which location to display and its source
+        let locationDisplay = '';
+        let locationIcon = '📍';
+        let sourceBadge = '';
+        
+        // Use status.display_location if available (from API), otherwise use camera.display_location
+        const displayLocation = status.display_location || camera.display_location;
+        const locationSource = status.location_source || camera.location_source || 'auto';
+        
+        if (displayLocation && displayLocation !== 'Detecting...' && displayLocation !== 'Location Unknown') {
+            // Set icon based on source
+            if (locationSource === 'manual') {
+                locationIcon = '✏️';  // Manual override
+                sourceBadge = '<span class="location-source-badge source-manual">Manual</span>';
+            } else {
+                locationIcon = '📍';  // Auto-detected
+                sourceBadge = '<span class="location-source-badge source-auto">Auto</span>';
+            }
+            locationDisplay = `<p class="location-info"><span class="location-icon">${locationIcon}</span> ${displayLocation} ${sourceBadge}</p>`;
+        } else if (camera.auto_location) {
+            locationDisplay = `<p class="location-info"><span class="location-icon">📍</span> ${camera.auto_location} <span class="location-source-badge source-auto">Auto</span></p>`;
         } else {
-            locationHtml = `<p class="location-info"><span class="location-icon">📍</span> <em>Location not detected</em></p>`;
+            locationDisplay = `<p class="location-info"><span class="location-icon">📍</span> <em>Detecting location...</em></p>`;
         }
         
         // Build action buttons based on role and permissions
@@ -375,7 +439,7 @@
                 <div class="camera-header">
                     <div class="camera-info">
                         <h3>${camera.name} ${roleBadge}</h3>
-                        ${locationHtml}
+                        ${locationDisplay}
                         <p>🏷️ ID: ${camera.camera_id}</p>
                         <p>🕐 Last updated: <span class="last-seen">${status.last_seen}</span></p>
                     </div>
@@ -432,7 +496,13 @@
                             <div class="camera-info">
                                 <h3>${camera.name} ⚠️</h3>
                                 <p>Error loading camera data</p>
+                                <p class="debug-info">${error.message || 'Unknown error'}</p>
                             </div>
+                            <span class="status-badge status-inactive">🔴 Error</span>
+                        </div>
+                        <div class="camera-actions">
+                            <button onclick="location.reload()" class="btn" style="background: #3498db;">🔄 Retry</button>
+                            <a href="/cameras/${camera.camera_id}/edit" class="btn" style="background: #f39c12;">✏️ Edit</a>
                         </div>
                     </div>
                 `;
@@ -463,13 +533,23 @@
                         badge.textContent = '🔴 Inactive';
                     }
                 }
+                
+                // Update location if available
+                const locationElem = cameraCard.querySelector('.location-info');
+                if (locationElem && status.display_location) {
+                    const icon = status.location_source === 'manual' ? '✏️' : '📍';
+                    const sourceBadge = status.location_source === 'manual' 
+                        ? '<span class="location-source-badge source-manual">Manual</span>'
+                        : '<span class="location-source-badge source-auto">Auto</span>';
+                    locationElem.innerHTML = `<span class="location-icon">${icon}</span> ${status.display_location} ${sourceBadge}`;
+                }
             }).catch(error => {
                 console.error('Error updating timestamp:', error);
             });
         });
     }
     
-    // Initial load
+    // Initial load when page is ready
     document.addEventListener('DOMContentLoaded', function() {
         loadAllCameras();
     });
