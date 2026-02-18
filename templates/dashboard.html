@@ -279,10 +279,13 @@
         const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
         const statusText = status.status === 'active' ? '🟢 Active' : '🔴 Inactive';
         
+        // FORCE only the first 6 images (extra safety in case API returns more)
+        const displayImages = images.slice(0, 6);
+        
         let imagesHtml = '';
-        if (images.length > 0) {
+        if (displayImages.length > 0) {
             imagesHtml = '<div class="images-grid">';
-            images.forEach(img => {
+            displayImages.forEach(img => {
                 imagesHtml += `
                     <div class="image-container" onclick="window.open('${img.url}', '_blank')">
                         <img src="${img.url}" alt="Camera image" loading="lazy">
@@ -359,6 +362,8 @@
         // Get cameras from server
         const cameras = {{ cameras | tojson }};
         
+        console.log('Cameras from server:', cameras);  // Debug log
+        
         if (cameras.length === 0) {
             container.style.display = 'none';
             emptyState.style.display = 'block';
@@ -375,6 +380,8 @@
                 loadCameraImages(camera.camera_id),
                 getCameraStatus(camera.camera_id)
             ]);
+            
+            console.log(`Camera ${camera.camera_id} received ${images.length} images`);  // Debug log
             
             const cardHtml = renderCameraCard(camera, images, status);
             container.innerHTML += cardHtml;
