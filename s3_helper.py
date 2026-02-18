@@ -40,16 +40,19 @@ def get_presigned_url(filename, expiration=3600):
         return None
 
 def list_camera_images(camera_id, max_images=6):
-    """List images for a camera from S3 - returns ALL images"""
+    """
+    List images for a camera from S3
+    Returns ONLY the latest 'max_images' images for display
+    All images are kept in S3 permanently
+    """
     try:
         print(f"📸 Listing images for camera: {camera_id}")
         
-        # List ALL objects with this camera prefix (no limit)
+        # List ALL objects with this camera prefix
         all_images = []
         continuation_token = None
         
         while True:
-            # Prepare list parameters
             list_params = {
                 'Bucket': AWS_BUCKET,
                 'Prefix': f"{camera_id}/",
@@ -64,16 +67,11 @@ def list_camera_images(camera_id, max_images=6):
             
             if 'Contents' in response:
                 all_images.extend(response['Contents'])
-                print(f"  Found {len(response['Contents'])} images in this batch")
-            else:
-                print(f"  No images found in this batch")
             
             # Check if there are more
-            if response.get('IsTruncated'):  # More images exist
-                continuation_token = response.get('NextContinuationToken')
-                print(f"  More images exist, fetching next batch...")
-            else:
-                break  # No more images
+            if not response.get('IsTruncated'):
+                break
+            continuation_token = response.get('NextContinuationToken')
         
         if not all_images:
             print(f"  No images found for camera {camera_id}")
@@ -82,21 +80,18 @@ def list_camera_images(camera_id, max_images=6):
         # Sort by last modified (newest first)
         all_images.sort(key=lambda x: x['LastModified'], reverse=True)
         
-        print(f"📸 Total images found for {camera_id}: {len(all_images)}")
+        # FORCE only the latest max_images for display
+        display_images = all_images[:max_images]
         
-        # Return ALL images (no limit)
+        print(f"📸 Total in S3: {len(all_images)}, Returning for display: {len(display_images)}")
+        
         images = []
-        for obj in all_images:
+        for obj in display_images:
             images.append({
                 'key': obj['Key'],
                 'timestamp': obj['LastModified'],
                 'size': obj['Size']
             })
-        
-        # If max_images is specified, respect it for display
-        if max_images and len(images) > max_images:
-            print(f"  Returning {max_images} images for display (out of {len(images)} total)")
-            return images[:max_images]
         
         return images
         
@@ -111,33 +106,3 @@ def delete_old_images(camera_id, keep_count=6):
     """
     print(f"📸 SURVEILLANCE MODE: Keeping ALL images for camera {camera_id}")
     return
-    
-    # Original code is completely disabled to prevent any deletion
-    """
-    try:
-        response = s3_client.list_objects_v2(
-            Bucket=AWS_BUCKET,
-            Prefix=f"{camera_id}/",
-            MaxKeys=1000
-        )
-        
-        if 'Contents' not in response:
-            return
-        
-        # Sort by last modified (oldest first)
-        objects = sorted(
-            response['Contents'],
-            key=lambda x: x['LastModified']
-        )
-        
-        # Delete all except the latest keep_count
-        to_delete = objects[:-keep_count] if len(objects) > keep_count else []
-        
-        for obj in to_delete:
-            s3_client.delete_object(Bucket=AWS_BUCKET, Key=obj['Key'])
-            print(f"Deleted old image: {obj['Key']}")
-            
-    except ClientError as e:
-        print(f"S3 delete error: {e}")
-    """
-
