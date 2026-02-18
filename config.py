@@ -13,8 +13,8 @@ AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
 AWS_BUCKET = os.getenv("AWS_BUCKET")
 
 # Application Settings
-IMAGES_PER_CAMERA = int(os.getenv("IMAGES_PER_CAMERA", 100))  # Show 100 images in dashboard
-CAMERA_TIMEOUT_MINUTES = float(os.getenv("CAMERA_TIMEOUT_MINUTES", 1))  # 1 minute timeout
+IMAGES_PER_CAMERA = int(os.getenv("IMAGES_PER_CAMERA", 6))  # Show 100 images in dashboard
+CAMERA_TIMEOUT_MINUTES = float(os.getenv("CAMERA_TIMEOUT_MINUTES", 0.5))  # 1 minute timeout
 
 # Debug S3 configuration
 print("=== S3 DEBUG INFO ===")
@@ -23,3 +23,4 @@ print(f"AWS_SECRET_KEY: {'✓ Set' if AWS_SECRET_KEY else '✗ Not set'}")
 print(f"AWS_REGION: {AWS_REGION}")
 print(f"AWS_BUCKET: {AWS_BUCKET}")
 print("=====================")
+
