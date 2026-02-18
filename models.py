@@ -29,21 +29,32 @@ class Camera(Base):
     id = Column(Integer, primary_key=True, index=True)
     camera_id = Column(String, unique=True, index=True, nullable=False)
     
-    # User-defined name (can be changed by user)
+    # User-defined name
     name = Column(String, nullable=False, default="New Camera")
     
-    # Auto-detected location info (read-only, updated automatically)
-    detected_location = Column(String)  # Full location string (e.g., "Mumbai, Maharashtra, India")
-    city = Column(String)                # Auto-detected city
-    region = Column(String)              # Auto-detected region/state
-    country = Column(String)             # Auto-detected country
-    country_code = Column(String)         # Country code (IN, US, etc.)
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
+    # Auto-detected location (from IP)
+    auto_location = Column(String)  # Auto-detected full location
+    auto_city = Column(String)
+    auto_region = Column(String)
+    auto_country = Column(String)
+    auto_country_code = Column(String)
+    auto_latitude = Column(Float, nullable=True)
+    auto_longitude = Column(Float, nullable=True)
+    
+    # Manually edited location (user can override)
+    manual_location = Column(String)  # Manual location if user overrides
+    manual_city = Column(String)
+    manual_region = Column(String)
+    manual_country = Column(String)
+    manual_latitude = Column(Float, nullable=True)
+    manual_longitude = Column(Float, nullable=True)
+    
+    # Which location to display (auto or manual)
+    use_manual_location = Column(Boolean, default=False)
     
     # Technical info
-    ip_address = Column(String)          # Last known IP
-    first_seen_ip = Column(String)       # IP on first connection
+    ip_address = Column(String)
+    first_seen_ip = Column(String)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     last_seen = Column(DateTime, nullable=True)
