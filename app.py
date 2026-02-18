@@ -164,8 +164,9 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
             'id': camera.id,
             'camera_id': camera.camera_id,
             'name': camera.name,
-            'location': camera.location or 'Location not set',
+            'detected_location': camera.detected_location or 'Detecting...',
             'city': camera.city,
+            'region': camera.region,
             'country': camera.country,
             'latitude': camera.latitude,
             'longitude': camera.longitude,
@@ -188,8 +189,9 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
             'id': camera.id,
             'camera_id': camera.camera_id,
             'name': camera.name,
-            'location': camera.location or 'Location not set',
+            'detected_location': camera.detected_location or 'Detecting...',
             'city': camera.city,
+            'region': camera.region,
             'country': camera.country,
             'latitude': camera.latitude,
             'longitude': camera.longitude,
@@ -227,7 +229,6 @@ async def create_camera(
     form = await request.form()
     camera_id = form.get("camera_id")
     name = form.get("name")
-    location = form.get("location")
     
     # Check if camera_id already exists
     if db.query(Camera).filter(Camera.camera_id == camera_id).first():
@@ -243,7 +244,6 @@ async def create_camera(
     new_camera = Camera(
         camera_id=camera_id,
         name=name,
-        location=location,
         user_id=user.id
     )
     db.add(new_camera)
@@ -313,7 +313,7 @@ async def update_camera(
     
     form = await request.form()
     camera.name = form.get("name")
-    camera.location = form.get("location")
+    # Note: detected_location is NOT updated here - it's auto-detected only
     db.commit()
     
     return RedirectResponse(url="/dashboard", status_code=302)
@@ -360,56 +360,32 @@ async def detect_camera_location(
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
     
+    # Get client IP (use camera's stored IP or current request IP)
+    client_ip = camera.ip_address or request.client.host
+    
     # Detect location from IP
-    location_data = location_detector.detect_location_from_ip(camera.ip_address)
+    location_data = location_detector.detect_location_from_ip(client_ip)
     
     if location_data.get("success", False):
+        camera.detected_location = location_data.get("detected_location")
         camera.city = location_data.get("city")
         camera.region = location_data.get("region")
         camera.country = location_data.get("country")
+        camera.country_code = location_data.get("country_code")
         camera.latitude = location_data.get("latitude")
         camera.longitude = location_data.get("longitude")
-        
-        # Auto-generate a nice name if not set
-        if camera.location == "Auto-detected" or not camera.location:
-            camera.location = location_detector.generate_location_name(location_data)
         
         db.commit()
         
         return {
             "success": True,
-            "location": camera.location,
+            "detected_location": camera.detected_location,
             "city": camera.city,
             "region": camera.region,
-            "country": camera.country,
-            "latitude": camera.latitude,
-            "longitude": camera.longitude
+            "country": camera.country
         }
     
     return {"success": False, "error": location_data.get("error", "Unknown error")}
-
-@app.get("/camera/location-suggestions")
-async def get_location_suggestions(
-    ip_address: str = None,
-    user: User = Depends(require_login)
-):
-    """Get location suggestions based on IP"""
-    location_data = location_detector.detect_location_from_ip(ip_address)
-    
-    if location_data.get("success", False):
-        return {
-            "suggestions": [
-                location_detector.generate_location_name(location_data),
-                f"{location_data.get('city', 'Unknown')} Area",
-                f"{location_data.get('country', 'Unknown')} - Camera"
-            ],
-            "raw_data": location_data
-        }
-    
-    return {
-        "suggestions": ["Home", "Office", "Warehouse", "Outdoor", "Garage", "Backyard"],
-        "raw_data": location_data
-    }
 
 # ========== CAMERA SHARING ROUTES ==========
 
@@ -545,17 +521,14 @@ async def upload_image(
             # Auto-detect location from IP
             location_data = location_detector.detect_location_from_ip(client_ip)
             
-            # Generate location name
-            auto_location = location_detector.generate_location_name(location_data)
-            auto_name = location_detector.generate_camera_name(location_data, camera_id)
-            
             camera = Camera(
                 camera_id=camera_id,
-                name=auto_name,  # Auto-generated name
-                location=auto_location,  # Auto-detected location
+                name=f"Camera {camera_id}",  # Default name, user can change later
+                detected_location=location_data.get("detected_location"),
                 city=location_data.get("city"),
                 region=location_data.get("region"),
                 country=location_data.get("country"),
+                country_code=location_data.get("country_code"),
                 latitude=location_data.get("latitude"),
                 longitude=location_data.get("longitude"),
                 ip_address=client_ip,
@@ -564,13 +537,21 @@ async def upload_image(
             )
             db.add(camera)
             db.flush()
-            print(f"📸 Created new camera with auto-location: {auto_location}")
-            print(f"📸 Camera name: {auto_name}")
+            print(f"📸 Created new camera with auto-location: {location_data.get('detected_location')}")
         else:
             # Update IP address if changed
             if camera.ip_address != client_ip:
                 print(f"📸 IP changed from {camera.ip_address} to {client_ip}")
                 camera.ip_address = client_ip
+                
+                # Optionally re-detect location if IP changed significantly
+                # You can enable this if cameras are mobile
+                # location_data = location_detector.detect_location_from_ip(client_ip)
+                # if location_data.get("success"):
+                #     camera.detected_location = location_data.get("detected_location")
+                #     camera.city = location_data.get("city")
+                #     camera.region = location_data.get("region")
+                #     camera.country = location_data.get("country")
         
         # Update last_seen timestamp
         old_last_seen = camera.last_seen
@@ -602,9 +583,7 @@ async def upload_image(
                 "camera": {
                     "id": camera.camera_id,
                     "name": camera.name,
-                    "location": camera.location,
-                    "city": camera.city,
-                    "country": camera.country
+                    "detected_location": camera.detected_location
                 }
             })
         else:
@@ -746,8 +725,9 @@ async def debug_camera(camera_id: str, db: Session = Depends(get_db)):
     return {
         "camera_id": camera.camera_id,
         "name": camera.name,
-        "location": camera.location,
+        "detected_location": camera.detected_location,
         "city": camera.city,
+        "region": camera.region,
         "country": camera.country,
         "latitude": camera.latitude,
         "longitude": camera.longitude,
