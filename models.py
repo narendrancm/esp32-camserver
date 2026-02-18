@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -29,7 +29,14 @@ class Camera(Base):
     id = Column(Integer, primary_key=True, index=True)
     camera_id = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
-    location = Column(String)
+    location = Column(String)  # Auto-detected or manual
+    city = Column(String)      # Auto-detected city
+    region = Column(String)     # Auto-detected region/state
+    country = Column(String)   # Auto-detected country
+    latitude = Column(Float, nullable=True)   # GPS coordinates
+    longitude = Column(Float, nullable=True)  # GPS coordinates
+    ip_address = Column(String) # Last known IP
+    first_seen_ip = Column(String)  # IP on first connection
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     last_seen = Column(DateTime, nullable=True)
