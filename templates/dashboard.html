@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - ESP32-CAM Surveillance{% endblock %}
+{% block title %}Dashboard - ESP32-CAM-Surveillance{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -145,6 +145,16 @@
         padding: 10px;
         font-size: 14px;
         min-width: 80px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: transform 0.2s;
+    }
+    
+    .camera-actions .btn:hover {
+        transform: translateY(-2px);
     }
     
     .loading {
@@ -177,6 +187,17 @@
         background: #9b59b6;
         color: white;
         margin-left: 8px;
+        display: inline-block;
+    }
+    
+    .location-info {
+        font-size: 13px;
+        color: #555;
+        margin-top: 5px;
+    }
+    
+    .location-icon {
+        margin-right: 4px;
     }
 </style>
 {% endblock %}
@@ -274,12 +295,32 @@
         }
     }
     
+    // Detect location for camera
+    async function detectLocation(cameraId) {
+        try {
+            const response = await fetch(`/camera/${cameraId}/detect-location`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`📍 Location detected: ${data.detected_location}`);
+                location.reload(); // Refresh to show new location
+            } else {
+                alert('Failed to detect location: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error detecting location:', error);
+            alert('Error detecting location');
+        }
+    }
+    
     // Render camera card
     function renderCameraCard(camera, images, status) {
         const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
         const statusText = status.status === 'active' ? '🟢 Active' : '🔴 Inactive';
         
-        // FORCE only the first 6 images (extra safety in case API returns more)
+        // FORCE only the first 6 images
         const displayImages = images.slice(0, 6);
         
         let imagesHtml = '';
@@ -309,25 +350,45 @@
             `;
         }
         
+        // Build location display
+        let locationHtml = '';
+        if (camera.detected_location && camera.detected_location !== 'Detecting...' && camera.detected_location !== 'Unknown Location') {
+            locationHtml = `<p class="location-info"><span class="location-icon">📍</span> ${camera.detected_location}</p>`;
+        } else if (camera.city && camera.country) {
+            // Build from components if full location not available
+            let parts = [];
+            if (camera.city) parts.push(camera.city);
+            if (camera.region) parts.push(camera.region);
+            if (camera.country) parts.push(camera.country);
+            locationHtml = `<p class="location-info"><span class="location-icon">📍</span> ${parts.join(', ')}</p>`;
+        } else {
+            locationHtml = `<p class="location-info"><span class="location-icon">📍</span> <em>Location not detected</em></p>`;
+        }
+        
         // Build action buttons based on role and permissions
         let actionsHtml = '';
         
         // Refresh button for everyone
-        actionsHtml += `<button onclick="loadCameraImages('${camera.camera_id}').then(imgs => location.reload())" class="btn">🔄 Refresh</button>`;
+        actionsHtml += `<button onclick="loadCameraImages('${camera.camera_id}').then(imgs => location.reload())" class="btn" style="background: #3498db; color: white;">🔄 Refresh</button>`;
         
         // Edit button (if owner or has edit permission)
         if (camera.role === 'owner' || camera.can_edit) {
-            actionsHtml += `<a href="/cameras/${camera.camera_id}/edit" class="btn btn-secondary">✏️ Edit</a>`;
+            actionsHtml += `<a href="/cameras/${camera.camera_id}/edit" class="btn" style="background: #f39c12; color: white; text-decoration: none;">✏️ Edit</a>`;
         }
         
         // Share button (only for owner)
         if (camera.role === 'owner') {
-            actionsHtml += `<a href="/cameras/${camera.camera_id}/share" class="btn" style="background: #9b59b6;">🔗 Share</a>`;
+            actionsHtml += `<a href="/cameras/${camera.camera_id}/share" class="btn" style="background: #9b59b6; color: white; text-decoration: none;">🔗 Share</a>`;
+        }
+        
+        // Location detect button (only for owner)
+        if (camera.role === 'owner') {
+            actionsHtml += `<button onclick="detectLocation('${camera.camera_id}')" class="btn" style="background: #2ecc71; color: white;">📍 Locate</button>`;
         }
         
         // Delete button (only for owner)
         if (camera.role === 'owner') {
-            actionsHtml += `<button onclick="deleteCamera('${camera.camera_id}')" class="btn btn-danger">🗑️ Delete</button>`;
+            actionsHtml += `<button onclick="deleteCamera('${camera.camera_id}')" class="btn" style="background: #e74c3c; color: white;">🗑️ Delete</button>`;
         }
         
         // Add role badge if shared
@@ -338,7 +399,7 @@
                 <div class="camera-header">
                     <div class="camera-info">
                         <h3>${camera.name} ${roleBadge}</h3>
-                        <p>📍 ${camera.location || 'No location'}</p>
+                        ${locationHtml}
                         <p>🏷️ ID: ${camera.camera_id}</p>
                         <p>🕐 Last updated: <span class="last-seen">${status.last_seen}</span></p>
                     </div>
@@ -376,15 +437,30 @@
         
         // Load each camera
         for (const camera of cameras) {
-            const [images, status] = await Promise.all([
-                loadCameraImages(camera.camera_id),
-                getCameraStatus(camera.camera_id)
-            ]);
-            
-            console.log(`Camera ${camera.camera_id} received ${images.length} images`);  // Debug log
-            
-            const cardHtml = renderCameraCard(camera, images, status);
-            container.innerHTML += cardHtml;
+            try {
+                const [images, status] = await Promise.all([
+                    loadCameraImages(camera.camera_id),
+                    getCameraStatus(camera.camera_id)
+                ]);
+                
+                console.log(`Camera ${camera.camera_id} received ${images.length} images`);  // Debug log
+                
+                const cardHtml = renderCameraCard(camera, images, status);
+                container.innerHTML += cardHtml;
+            } catch (error) {
+                console.error(`Error loading camera ${camera.camera_id}:`, error);
+                // Show error card
+                container.innerHTML += `
+                    <div class="camera-card">
+                        <div class="camera-header">
+                            <div class="camera-info">
+                                <h3>${camera.name} ⚠️</h3>
+                                <p>Error loading camera data</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
         }
     }
     
@@ -392,26 +468,35 @@
     function updateTimestamps() {
         document.querySelectorAll('.last-seen').forEach(elem => {
             const cameraCard = elem.closest('.camera-card');
+            if (!cameraCard) return;
+            
             const cameraId = cameraCard.dataset.cameraId;
+            if (!cameraId) return;
             
             getCameraStatus(cameraId).then(status => {
                 elem.textContent = status.last_seen;
                 
                 // Update status badge
                 const badge = cameraCard.querySelector('.status-badge');
-                if (status.status === 'active') {
-                    badge.className = 'status-badge status-active';
-                    badge.textContent = '🟢 Active';
-                } else {
-                    badge.className = 'status-badge status-inactive';
-                    badge.textContent = '🔴 Inactive';
+                if (badge) {
+                    if (status.status === 'active') {
+                        badge.className = 'status-badge status-active';
+                        badge.textContent = '🟢 Active';
+                    } else {
+                        badge.className = 'status-badge status-inactive';
+                        badge.textContent = '🔴 Inactive';
+                    }
                 }
+            }).catch(error => {
+                console.error('Error updating timestamp:', error);
             });
         });
     }
     
     // Initial load
-    loadAllCameras();
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAllCameras();
+    });
     
     // Auto-refresh every 30 seconds
     setInterval(loadAllCameras, 30000);
