@@ -39,7 +39,7 @@ def get_presigned_url(filename, expiration=3600):
         print(f"❌ Presigned URL error: {e}")
         return None
 
-def list_camera_images(camera_id, max_images=50):
+def list_camera_images(camera_id, max_images=6):
     """List images for a camera from S3 - returns ALL images"""
     try:
         print(f"📸 Listing images for camera: {camera_id}")
@@ -140,3 +140,4 @@ def delete_old_images(camera_id, keep_count=6):
     except ClientError as e:
         print(f"S3 delete error: {e}")
     """
+
