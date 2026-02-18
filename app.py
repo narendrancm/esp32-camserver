@@ -12,6 +12,7 @@ from config import SECRET_KEY, IMAGES_PER_CAMERA, CAMERA_TIMEOUT_MINUTES
 from models import Base, User, Camera, CameraShare, engine, get_db
 from auth import hash_password, verify_password
 from s3_helper import upload_to_s3, get_presigned_url, list_camera_images, delete_old_images
+from location_helper import location_detector
 
 # Initialize FastAPI
 app = FastAPI(title="Surveillance Cam")
@@ -159,17 +160,22 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
     
     # Add owned cameras
     for camera in owned_cameras:
-        all_cameras.append({
+        camera_dict = {
             'id': camera.id,
             'camera_id': camera.camera_id,
             'name': camera.name,
-            'location': camera.location,
+            'location': camera.location or 'Location not set',
+            'city': camera.city,
+            'country': camera.country,
+            'latitude': camera.latitude,
+            'longitude': camera.longitude,
             'is_active': camera.is_active,
             'last_seen': camera.last_seen.isoformat() if camera.last_seen else None,
             'created_at': camera.created_at.isoformat() if camera.created_at else None,
             'role': 'owner',
             'can_edit': True
-        })
+        }
+        all_cameras.append(camera_dict)
     
     # Add shared cameras
     for camera in shared_cameras:
@@ -178,17 +184,22 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
             CameraShare.shared_with_user_id == user.id
         ).first()
         
-        all_cameras.append({
+        camera_dict = {
             'id': camera.id,
             'camera_id': camera.camera_id,
             'name': camera.name,
-            'location': camera.location,
+            'location': camera.location or 'Location not set',
+            'city': camera.city,
+            'country': camera.country,
+            'latitude': camera.latitude,
+            'longitude': camera.longitude,
             'is_active': camera.is_active,
             'last_seen': camera.last_seen.isoformat() if camera.last_seen else None,
             'created_at': camera.created_at.isoformat() if camera.created_at else None,
             'role': 'viewer',
             'can_edit': share_info.can_edit if share_info else False
-        })
+        }
+        all_cameras.append(camera_dict)
     
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -331,6 +342,75 @@ async def delete_camera(
     
     return RedirectResponse(url="/dashboard", status_code=302)
 
+# ========== LOCATION DETECTION ROUTES ==========
+
+@app.post("/camera/{camera_id}/detect-location")
+async def detect_camera_location(
+    camera_id: str,
+    request: Request,
+    user: User = Depends(require_login),
+    db: Session = Depends(get_db)
+):
+    """Manually trigger location detection for a camera"""
+    camera = db.query(Camera).filter(
+        Camera.camera_id == camera_id,
+        Camera.user_id == user.id
+    ).first()
+    
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    # Detect location from IP
+    location_data = location_detector.detect_location_from_ip(camera.ip_address)
+    
+    if location_data.get("success", False):
+        camera.city = location_data.get("city")
+        camera.region = location_data.get("region")
+        camera.country = location_data.get("country")
+        camera.latitude = location_data.get("latitude")
+        camera.longitude = location_data.get("longitude")
+        
+        # Auto-generate a nice name if not set
+        if camera.location == "Auto-detected" or not camera.location:
+            camera.location = location_detector.generate_location_name(location_data)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "location": camera.location,
+            "city": camera.city,
+            "region": camera.region,
+            "country": camera.country,
+            "latitude": camera.latitude,
+            "longitude": camera.longitude
+        }
+    
+    return {"success": False, "error": location_data.get("error", "Unknown error")}
+
+@app.get("/camera/location-suggestions")
+async def get_location_suggestions(
+    ip_address: str = None,
+    user: User = Depends(require_login)
+):
+    """Get location suggestions based on IP"""
+    location_data = location_detector.detect_location_from_ip(ip_address)
+    
+    if location_data.get("success", False):
+        return {
+            "suggestions": [
+                location_detector.generate_location_name(location_data),
+                f"{location_data.get('city', 'Unknown')} Area",
+                f"{location_data.get('country', 'Unknown')} - Camera"
+            ],
+            "raw_data": location_data
+        }
+    
+    return {
+        "suggestions": ["Home", "Office", "Warehouse", "Outdoor", "Garage", "Backyard"],
+        "raw_data": location_data
+    }
+
 # ========== CAMERA SHARING ROUTES ==========
 
 @app.get("/cameras/{camera_id}/share", response_class=HTMLResponse)
@@ -443,32 +523,54 @@ async def unshare_camera(
 async def upload_image(
     camera_id: str = Form(...),
     file: UploadFile = File(...),
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
-    """Upload image from ESP32-CAM - KEEPS ALL IMAGES FOREVER"""
+    """Upload image from ESP32-CAM with auto-location detection"""
     print(f"\n📸 ===== UPLOAD RECEIVED =====")
     print(f"📸 Camera ID: {camera_id}")
     print(f"📸 File name: {file.filename}")
+    
+    # Get client IP address
+    client_ip = request.client.host if request else None
+    print(f"📸 Client IP: {client_ip}")
     
     try:
         # Find or create camera
         camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
         
         if not camera:
-            print(f"📸 Camera {camera_id} not found, creating new...")
-            # Auto-create camera if it doesn't exist
+            print(f"📸 Camera {camera_id} not found, creating new with auto-detection...")
+            
+            # Auto-detect location from IP
+            location_data = location_detector.detect_location_from_ip(client_ip)
+            
+            # Generate location name
+            auto_location = location_detector.generate_location_name(location_data)
+            auto_name = location_detector.generate_camera_name(location_data, camera_id)
+            
             camera = Camera(
                 camera_id=camera_id,
-                name=f"Camera {camera_id}",
-                location="Auto-detected",
+                name=auto_name,  # Auto-generated name
+                location=auto_location,  # Auto-detected location
+                city=location_data.get("city"),
+                region=location_data.get("region"),
+                country=location_data.get("country"),
+                latitude=location_data.get("latitude"),
+                longitude=location_data.get("longitude"),
+                ip_address=client_ip,
+                first_seen_ip=client_ip,
                 user_id=1  # Assign to admin
             )
             db.add(camera)
             db.flush()
-            print(f"📸 Created new camera with ID: {camera.id}")
+            print(f"📸 Created new camera with auto-location: {auto_location}")
+            print(f"📸 Camera name: {auto_name}")
         else:
-            print(f"📸 Found existing camera: {camera.name} (ID: {camera.id})")
-            print(f"📸 Old last_seen: {camera.last_seen}")
+            # Update IP address if changed
+            if camera.ip_address != client_ip:
+                print(f"📸 IP changed from {camera.ip_address} to {client_ip}")
+                camera.ip_address = client_ip
         
         # Update last_seen timestamp
         old_last_seen = camera.last_seen
@@ -493,13 +595,18 @@ async def upload_image(
         
         if success:
             print(f"✅ Upload successful to S3: {filename}")
-            
-            # DELETION DISABLED - Keeping all images for surveillance
-            print(f"📸 SURVEILLANCE MODE: Keeping ALL images for camera {camera_id}")
-            # delete_old_images(camera_id, IMAGES_PER_CAMERA)  # ← DISABLED
-            
             print(f"✅ Upload complete for camera {camera_id}")
-            return JSONResponse({"status": "success", "message": "Image uploaded"})
+            return JSONResponse({
+                "status": "success", 
+                "message": "Image uploaded",
+                "camera": {
+                    "id": camera.camera_id,
+                    "name": camera.name,
+                    "location": camera.location,
+                    "city": camera.city,
+                    "country": camera.country
+                }
+            })
         else:
             print(f"❌ S3 upload failed: {filename}")
             return JSONResponse(
@@ -539,7 +646,7 @@ async def get_camera_images(
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Get ONLY 6 images from S3
-    images = list_camera_images(camera_id, 6)  # ← FORCE 6 IMAGES
+    images = list_camera_images(camera_id, 6)
     
     print(f"📸 API returning {len(images)} images for camera {camera_id}")
     
@@ -640,6 +747,11 @@ async def debug_camera(camera_id: str, db: Session = Depends(get_db)):
         "camera_id": camera.camera_id,
         "name": camera.name,
         "location": camera.location,
+        "city": camera.city,
+        "country": camera.country,
+        "latitude": camera.latitude,
+        "longitude": camera.longitude,
+        "ip_address": camera.ip_address,
         "user_id": camera.user_id,
         "last_seen": camera.last_seen.isoformat() if camera.last_seen else None,
         "last_seen_raw": str(camera.last_seen),
