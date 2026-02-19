@@ -111,6 +111,8 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
     return templates.TemplateResponse('dashboard.html', {'request': request,
                 'session': request.session, 'user': user, 'cameras': all_cameras})
 
+# ========== CAMERA EDIT ENDPOINTS ==========
+
 @app.get('/cameras/new', response_class=HTMLResponse)
 async def new_camera_page(request: Request, user: User = Depends(require_login)):
     return templates.TemplateResponse('edit_camera.html', {'request': request,
@@ -128,23 +130,212 @@ async def create_camera(request: Request, user: User = Depends(require_login), d
     db.commit()
     return RedirectResponse(url='/dashboard', status_code=302)
 
-@app.post('/cameras/{camera_id}/delete')
-async def delete_camera(camera_id: str, user: User = Depends(require_login), db: Session = Depends(get_db)):
-    camera = db.query(Camera).filter(Camera.camera_id == camera_id, Camera.user_id == user.id).first()
-    if not camera: raise HTTPException(status_code=404, detail='Camera not found or not yours')
-    db.query(CameraShare).filter(CameraShare.camera_id == camera.id).delete()
-    db.delete(camera); db.commit()
+@app.get('/cameras/{camera_id}/edit', response_class=HTMLResponse)
+async def edit_camera_page(
+    camera_id: str, 
+    request: Request, 
+    user: User = Depends(require_login), 
+    db: Session = Depends(get_db)
+):
+    """Show edit camera form"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail='Camera not found')
+    
+    # Check if user can edit (owner or shared with edit permission)
+    is_owner = camera.user_id == user.id
+    is_shared_editor = db.query(CameraShare).filter(
+        CameraShare.camera_id == camera.id,
+        CameraShare.shared_with_user_id == user.id,
+        CameraShare.can_edit == True).first() is not None
+    
+    if not (is_owner or is_shared_editor):
+        raise HTTPException(status_code=403, detail='You do not have permission to edit this camera')
+    
+    return templates.TemplateResponse('edit_camera.html', {
+        'request': request,
+        'session': request.session,
+        'user': user,
+        'camera': camera,
+        'action': 'Edit'
+    })
+
+@app.post('/cameras/{camera_id}/edit')
+async def update_camera(
+    camera_id: str,
+    request: Request,
+    user: User = Depends(require_login),
+    db: Session = Depends(get_db)
+):
+    """Update camera details"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail='Camera not found')
+    
+    # Check if user can edit (owner or shared with edit permission)
+    is_owner = camera.user_id == user.id
+    is_shared_editor = db.query(CameraShare).filter(
+        CameraShare.camera_id == camera.id,
+        CameraShare.shared_with_user_id == user.id,
+        CameraShare.can_edit == True).first() is not None
+    
+    if not (is_owner or is_shared_editor):
+        raise HTTPException(status_code=403, detail='You do not have permission to edit this camera')
+    
+    form = await request.form()
+    camera.name = form.get('name')
+    camera.location = form.get('location')
+    db.commit()
+    
     return RedirectResponse(url='/dashboard', status_code=302)
 
+@app.post('/cameras/{camera_id}/delete')
+async def delete_camera(
+    camera_id: str, 
+    user: User = Depends(require_login), 
+    db: Session = Depends(get_db)
+):
+    """Delete a camera (owner only)"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id, Camera.user_id == user.id).first()
+    if not camera: 
+        raise HTTPException(status_code=404, detail='Camera not found or not yours')
+    
+    # Delete all shares first
+    db.query(CameraShare).filter(CameraShare.camera_id == camera.id).delete()
+    db.delete(camera)
+    db.commit()
+    
+    return RedirectResponse(url='/dashboard', status_code=302)
+
+# ========== CAMERA SHARE ENDPOINTS ==========
+
+@app.get('/cameras/{camera_id}/share', response_class=HTMLResponse)
+async def share_camera_page(
+    camera_id: str,
+    request: Request,
+    user: User = Depends(require_login),
+    db: Session = Depends(get_db)
+):
+    """Show share camera form"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail='Camera not found')
+    
+    # Only owner can share
+    if camera.user_id != user.id:
+        raise HTTPException(status_code=403, detail='Only the owner can share this camera')
+    
+    # Get all other users (excluding current user)
+    other_users = db.query(User).filter(User.id != user.id).all()
+    
+    # Get existing shares
+    shares = db.query(CameraShare).filter(CameraShare.camera_id == camera.id).all()
+    
+    return templates.TemplateResponse('share_camera.html', {
+        'request': request,
+        'session': request.session,
+        'user': user,
+        'camera': camera,
+        'other_users': other_users,
+        'shares': shares
+    })
+
+@app.post('/cameras/{camera_id}/share')
+async def share_camera(
+    camera_id: str,
+    request: Request,
+    user: User = Depends(require_login),
+    db: Session = Depends(get_db)
+):
+    """Share camera with another user"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail='Camera not found')
+    
+    # Only owner can share
+    if camera.user_id != user.id:
+        raise HTTPException(status_code=403, detail='Only the owner can share this camera')
+    
+    form = await request.form()
+    shared_user_id = form.get('user_id')
+    can_edit = form.get('can_edit') == 'on'
+    
+    # Check if user exists
+    shared_user = db.query(User).filter(User.id == shared_user_id).first()
+    if not shared_user:
+        raise HTTPException(status_code=404, detail='User not found')
+    
+    # Check if already shared
+    existing_share = db.query(CameraShare).filter(
+        CameraShare.camera_id == camera.id,
+        CameraShare.shared_with_user_id == shared_user_id
+    ).first()
+    
+    if existing_share:
+        # Update existing share
+        existing_share.can_edit = can_edit
+    else:
+        # Create new share
+        new_share = CameraShare(
+            camera_id=camera.id,
+            shared_with_user_id=shared_user_id,
+            can_edit=can_edit
+        )
+        db.add(new_share)
+    
+    db.commit()
+    
+    return RedirectResponse(url=f'/cameras/{camera_id}/share', status_code=302)
+
+@app.post('/cameras/{camera_id}/unshare/{user_id}')
+async def unshare_camera(
+    camera_id: str,
+    user_id: int,
+    request: Request,
+    user: User = Depends(require_login),
+    db: Session = Depends(get_db)
+):
+    """Remove sharing from a user"""
+    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
+    if not camera:
+        raise HTTPException(status_code=404, detail='Camera not found')
+    
+    # Only owner can unshare
+    if camera.user_id != user.id:
+        raise HTTPException(status_code=403, detail='Only the owner can unshare this camera')
+    
+    # Delete the share
+    db.query(CameraShare).filter(
+        CameraShare.camera_id == camera.id,
+        CameraShare.shared_with_user_id == user_id
+    ).delete()
+    
+    db.commit()
+    
+    return RedirectResponse(url=f'/cameras/{camera_id}/share', status_code=302)
+
+# ========== UPLOAD AND API ENDPOINTS ==========
+
 @app.post('/upload')
-async def upload_image(camera_id: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_image(
+    camera_id: str = Form(...), 
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
     print(f'\n📸 UPLOAD from Camera ID: {camera_id}')
     try:
         camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
         if not camera:
-            camera = Camera(camera_id=camera_id, name=f'Camera {camera_id}',
-                    location='Auto-detected', user_id=1)
-            db.add(camera); db.flush()
+            # Auto-create camera if it doesn't exist (for first upload)
+            camera = Camera(
+                camera_id=camera_id, 
+                name=f'Camera {camera_id}',
+                location='Auto-detected', 
+                user_id=1  # Assign to admin
+            )
+            db.add(camera)
+            db.flush()
+        
         camera.last_seen = datetime.utcnow()
         db.commit()
         
@@ -197,16 +388,26 @@ async def get_camera_images(
     return JSONResponse({'images': image_data, 'camera_id': camera_id})
 
 @app.get('/api/camera/{camera_id}/status')
-async def get_camera_status(camera_id: str, user: User = Depends(require_login), db: Session = Depends(get_db)):
+async def get_camera_status(
+    camera_id: str, 
+    user: User = Depends(require_login), 
+    db: Session = Depends(get_db)
+):
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
-    if not camera: raise HTTPException(status_code=404, detail='Camera not found')
+    if not camera: 
+        raise HTTPException(status_code=404, detail='Camera not found')
+    
     is_owner = camera.user_id == user.id
     is_shared = db.query(CameraShare).filter(
         CameraShare.camera_id == camera.id,
         CameraShare.shared_with_user_id == user.id).first() is not None
-    if not (is_owner or is_shared): raise HTTPException(status_code=403, detail='Access denied')
     
-    status = 'inactive'; last_seen_text = 'Never'
+    if not (is_owner or is_shared): 
+        raise HTTPException(status_code=403, detail='Access denied')
+    
+    status = 'inactive'
+    last_seen_text = 'Never'
+    
     if camera.last_seen:
         time_diff = datetime.utcnow() - camera.last_seen
         timeout = timedelta(minutes=CAMERA_TIMEOUT_MINUTES)
@@ -217,14 +418,22 @@ async def get_camera_status(camera_id: str, user: User = Depends(require_login),
         elif seconds < 86400: last_seen_text = f'{seconds // 3600}h ago'
         else: last_seen_text = f'{seconds // 86400}d ago'
     
-    can_edit = is_owner or (is_shared and db.query(CameraShare).filter(
-        CameraShare.camera_id == camera.id,
-        CameraShare.shared_with_user_id == user.id,
-        CameraShare.can_edit == True).first() is not None)
+    # Check if user can edit
+    can_edit = is_owner
+    if not can_edit and is_shared:
+        share_info = db.query(CameraShare).filter(
+            CameraShare.camera_id == camera.id,
+            CameraShare.shared_with_user_id == user.id
+        ).first()
+        can_edit = share_info and share_info.can_edit
     
-    return JSONResponse({'status': status, 'last_seen': last_seen_text,
-            'last_seen_datetime': camera.last_seen.isoformat() if camera.last_seen else None,
-            'is_owner': is_owner, 'can_edit': can_edit})
+    return JSONResponse({
+        'status': status, 
+        'last_seen': last_seen_text,
+        'last_seen_datetime': camera.last_seen.isoformat() if camera.last_seen else None,
+        'is_owner': is_owner, 
+        'can_edit': can_edit
+    })
 
 @app.get('/test-s3')
 async def test_s3():
