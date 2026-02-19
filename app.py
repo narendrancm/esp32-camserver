@@ -154,7 +154,6 @@ async def upload_image(camera_id: str = Form(...), file: UploadFile = File(...),
         
         success = upload_to_s3(file_content, filename)
         if success:
-            # This now uses IMAGES_PER_CAMERA from config (5000)
             delete_old_images(camera_id)
             return JSONResponse({'status': 'success', 'message': 'Image uploaded'})
         return JSONResponse({'status': 'error', 'message': 'S3 upload failed'}, status_code=500)
@@ -183,42 +182,6 @@ async def get_camera_images(
     
     # Pass display_limit=6 to show only 6 images
     images = list_camera_images(camera_id, display_limit=6, max_storage=5000)
-    
-    image_data = []
-    for img in images:
-        url = get_presigned_url(img['key'])
-        if url:
-            image_data.append({
-                'url': url, 
-                'timestamp': img['timestamp'].isoformat(),
-                'size': img['size'], 
-                'key': img['key']
-            })
-    
-    return JSONResponse({'images': image_data, 'camera_id': camera_id})
-
-@app.get('/api/images/all/{camera_id}')
-async def get_all_camera_images(
-    camera_id: str, 
-    limit: int = 50,
-    user: User = Depends(require_login), 
-    db: Session = Depends(get_db)
-):
-    """Get all images for a camera (for modal view)"""
-    camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
-    if not camera: 
-        raise HTTPException(status_code=404, detail='Camera not found')
-    
-    is_owner = camera.user_id == user.id
-    is_shared = db.query(CameraShare).filter(
-        CameraShare.camera_id == camera.id,
-        CameraShare.shared_with_user_id == user.id).first() is not None
-    
-    if not (is_owner or is_shared): 
-        raise HTTPException(status_code=403, detail='Access denied')
-    
-    # Get up to 'limit' images for display
-    images = list_camera_images(camera_id, display_limit=limit, max_storage=5000)
     
     image_data = []
     for img in images:
