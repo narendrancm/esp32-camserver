@@ -5,7 +5,7 @@
 {% block extra_styles %}
 <style>
     .edit-container {
-        max-width: 800px;
+        max-width: 600px;
         margin: 40px auto;
     }
     
@@ -34,138 +34,6 @@
         flex: 1;
         text-align: center;
     }
-    
-    .location-section {
-        background: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        margin: 20px 0;
-    }
-    
-    .auto-location {
-        border-left: 4px solid #3498db;
-        background: #e8f4f8;
-        padding: 15px;
-        border-radius: 8px;
-        margin: 20px 0;
-    }
-    
-    .manual-location {
-        border-left: 4px solid #2ecc71;
-        background: #e8f8f0;
-        padding: 15px;
-        border-radius: 8px;
-        margin: 20px 0;
-    }
-    
-    .location-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
-    }
-    
-    .location-header h4 {
-        margin: 0;
-        color: #2c3e50;
-    }
-    
-    .location-badge {
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    
-    .badge-auto {
-        background: #3498db;
-        color: white;
-    }
-    
-    .badge-manual {
-        background: #2ecc71;
-        color: white;
-    }
-    
-    .badge-active {
-        background: #f39c12;
-        color: white;
-    }
-    
-    .location-detail {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 15px;
-        margin-top: 15px;
-    }
-    
-    .detail-item {
-        background: white;
-        padding: 10px;
-        border-radius: 6px;
-    }
-    
-    .detail-item label {
-        font-weight: 600;
-        color: #666;
-        font-size: 12px;
-        display: block;
-        margin-bottom: 5px;
-    }
-    
-    .detail-item .value {
-        color: #333;
-        font-size: 14px;
-    }
-    
-    .checkbox-group {
-        margin: 20px 0;
-        padding: 15px;
-        background: #fff3cd;
-        border-radius: 8px;
-        border-left: 4px solid #ffc107;
-    }
-    
-    .checkbox-group label {
-        font-weight: 600;
-        color: #856404;
-        margin-left: 10px;
-    }
-    
-    .help-text {
-        color: #666;
-        font-size: 13px;
-        margin-top: 5px;
-    }
-    
-    .info-icon {
-        color: #3498db;
-        margin-right: 5px;
-    }
-    
-    .error-box {
-        background: #fee;
-        color: #c33;
-        padding: 15px;
-        border-radius: 8px;
-        margin: 20px 0;
-        border-left: 4px solid #e74c3c;
-    }
-    
-    .reset-link {
-        color: #3498db;
-        text-decoration: none;
-        font-size: 13px;
-        margin-left: 15px;
-    }
-    
-    .reset-link:hover {
-        text-decoration: underline;
-    }
-    
-    .coord-input {
-        font-family: monospace;
-    }
 </style>
 {% endblock %}
 
@@ -178,8 +46,8 @@
     
     <div class="card">
         {% if error %}
-        <div class="error-box">
-            <h4>⚠️ {{ error }}</h4>
+        <div class="alert alert-error">
+            {{ error }}
         </div>
         {% endif %}
         
@@ -188,139 +56,28 @@
             <div class="form-group">
                 <label for="camera_id">Camera ID *</label>
                 <input type="text" id="camera_id" name="camera_id" required 
-                       placeholder="e.g., home_entrance_01, office_parking_01"
+                       placeholder="e.g., cam1, front_door, garage_cam"
                        pattern="[a-zA-Z0-9_-]+"
-                       title="Only letters, numbers, underscores, and hyphens allowed"
-                       value="{{ request.form.get('camera_id', '') }}">
-                <div class="help-text">
-                    <span class="info-icon">🔑</span> This ID must match the cameraId in your ESP32-CAM code
-                </div>
+                       title="Only letters, numbers, underscores, and hyphens allowed">
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    This ID must match the cameraId in your ESP32-CAM code
+                </small>
             </div>
             {% endif %}
             
             <div class="form-group">
                 <label for="name">Camera Name *</label>
                 <input type="text" id="name" name="name" required 
-                       value="{% if camera %}{{ camera.name }}{% else %}{{ request.form.get('name', '') }}{% endif %}"
-                       placeholder="e.g., Front Door Camera, Parking Lot Camera">
-                <div class="help-text">
-                    <span class="info-icon">🏷️</span> Choose a friendly name that helps you identify this camera
-                </div>
+                       value="{% if camera %}{{ camera.name }}{% endif %}"
+                       placeholder="e.g., Front Door Camera">
             </div>
             
-            {% if camera %}
-            <!-- Auto-detected Location Display -->
-            <div class="auto-location">
-                <div class="location-header">
-                    <h4>📍 Auto-Detected Location</h4>
-                    <span class="location-badge badge-auto">IP Geolocation</span>
-                </div>
-                
-                {% if camera.auto_location %}
-                <div class="location-detail">
-                    <div class="detail-item">
-                        <label>Full Location</label>
-                        <div class="value">{{ camera.auto_location }}</div>
-                    </div>
-                    <div class="detail-item">
-                        <label>City / Region</label>
-                        <div class="value">{{ camera.auto_city or 'Unknown' }}, {{ camera.auto_region or 'Unknown' }}</div>
-                    </div>
-                    <div class="detail-item">
-                        <label>Country</label>
-                        <div class="value">{{ camera.auto_country or 'Unknown' }} ({{ camera.auto_country_code or 'N/A' }})</div>
-                    </div>
-                    <div class="detail-item">
-                        <label>Coordinates</label>
-                        <div class="value coord-input">
-                            {% if camera.auto_latitude and camera.auto_longitude %}
-                                {{ "%.6f"|format(camera.auto_latitude) }}, {{ "%.6f"|format(camera.auto_longitude) }}
-                            {% else %}
-                                Not available
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                <div class="help-text" style="margin-top: 10px;">
-                    <span class="info-icon">ℹ️</span> Location detected from IP address. May not be exact.
-                </div>
-                {% else %}
-                <p class="help-text">Location not detected yet. First upload will detect location.</p>
-                {% endif %}
+            <div class="form-group">
+                <label for="location">Location</label>
+                <input type="text" id="location" name="location" 
+                       value="{% if camera %}{{ camera.location }}{% endif %}"
+                       placeholder="e.g., Main Entrance, Garage, Backyard">
             </div>
-            
-            <!-- Manual Location Override -->
-            <div class="manual-location">
-                <div class="location-header">
-                    <h4>✏️ Manual Location Override</h4>
-                    <span class="location-badge badge-manual">User Defined</span>
-                </div>
-                
-                <p class="help-text">Enter your exact location if auto-detection is incorrect.</p>
-                
-                <div class="form-group">
-                    <label for="manual_location">Full Location (Optional)</label>
-                    <input type="text" id="manual_location" name="manual_location" 
-                           value="{% if camera.manual_location %}{{ camera.manual_location }}{% endif %}"
-                           placeholder="e.g., Erode, Tamil Nadu, India">
-                </div>
-                
-                <div class="location-detail">
-                    <div class="form-group">
-                        <label for="manual_city">City</label>
-                        <input type="text" id="manual_city" name="manual_city" 
-                               value="{% if camera.manual_city %}{{ camera.manual_city }}{% endif %}"
-                               placeholder="Erode">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="manual_region">Region / State</label>
-                        <input type="text" id="manual_region" name="manual_region" 
-                               value="{% if camera.manual_region %}{{ camera.manual_region }}{% endif %}"
-                               placeholder="Tamil Nadu">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="manual_country">Country</label>
-                        <input type="text" id="manual_country" name="manual_country" 
-                               value="{% if camera.manual_country %}{{ camera.manual_country }}{% endif %}"
-                               placeholder="India">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="manual_latitude">Latitude (Optional)</label>
-                        <input type="text" id="manual_latitude" name="manual_latitude" class="coord-input"
-                               value="{% if camera.manual_latitude %}{{ camera.manual_latitude }}{% endif %}"
-                               placeholder="11.3392778">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="manual_longitude">Longitude (Optional)</label>
-                        <input type="text" id="manual_longitude" name="manual_longitude" class="coord-input"
-                               value="{% if camera.manual_longitude %}{{ camera.manual_longitude }}{% endif %}"
-                               placeholder="77.7268333">
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Location Source Selection -->
-            <div class="checkbox-group">
-                <input type="checkbox" id="use_manual_location" name="use_manual_location" 
-                       {% if camera.use_manual_location %}checked{% endif %}>
-                <label for="use_manual_location">Use manual location instead of auto-detected</label>
-                <div class="help-text" style="margin-top: 10px; color: #856404;">
-                    <span class="info-icon">📍</span> When checked, the dashboard will display your manual location instead of the auto-detected one.
-                </div>
-            </div>
-            
-            <!-- Reset to Auto Location -->
-            <div style="text-align: right; margin: 10px 0;">
-                <a href="/camera/{{ camera.camera_id }}/reset-location" class="reset-link" 
-                   onclick="return confirm('Reset to auto-detected location? This will clear your manual override.')">
-                    ↻ Reset to auto-detected location
-                </a>
-            </div>
-            {% endif %}
             
             <div class="form-actions">
                 <a href="/dashboard" class="btn btn-secondary">Cancel</a>
