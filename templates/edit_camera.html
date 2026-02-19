@@ -1,89 +1,32 @@
-{% extends "base.html" %}
-
-{% block title %}{{ action }} Camera - ESP32-CAM Surveillance{% endblock %}
-
-{% block extra_styles %}
-<style>
-    .edit-container {
-        max-width: 600px;
-        margin: 40px auto;
-    }
-    
-    .edit-header {
-        text-align: center;
-        margin-bottom: 30px;
-    }
-    
-    .edit-header h2 {
-        color: white;
-        font-size: 32px;
-        margin-bottom: 10px;
-    }
-    
-    .edit-header p {
-        color: rgba(255,255,255,0.9);
-    }
-    
-    .form-actions {
-        display: flex;
-        gap: 15px;
-        margin-top: 30px;
-    }
-    
-    .form-actions .btn {
-        flex: 1;
-        text-align: center;
-    }
-</style>
-{% endblock %}
-
+{% extends 'base.html' %}
+{% block title %}{{ action }} Camera{% endblock %}
 {% block content %}
-<div class="edit-container">
-    <div class="edit-header">
-        <h2>{{ action }} Camera</h2>
-        <p>{% if camera %}Edit camera details{% else %}Add a new ESP32-CAM to your system{% endif %}</p>
-    </div>
-    
-    <div class="card">
-        {% if error %}
-        <div class="alert alert-error">
-            {{ error }}
-        </div>
-        {% endif %}
-        
-        <form method="POST" action="{% if camera %}/cameras/{{ camera.camera_id }}/edit{% else %}/cameras/new{% endif %}">
-            {% if not camera %}
-            <div class="form-group">
-                <label for="camera_id">Camera ID *</label>
-                <input type="text" id="camera_id" name="camera_id" required 
-                       placeholder="e.g., cam1, front_door, garage_cam"
-                       pattern="[a-zA-Z0-9_-]+"
-                       title="Only letters, numbers, underscores, and hyphens allowed">
-                <small style="color: #666; display: block; margin-top: 5px;">
-                    This ID must match the cameraId in your ESP32-CAM code
-                </small>
-            </div>
-            {% endif %}
-            
-            <div class="form-group">
-                <label for="name">Camera Name *</label>
-                <input type="text" id="name" name="name" required 
-                       value="{% if camera %}{{ camera.name }}{% endif %}"
-                       placeholder="e.g., Front Door Camera">
-            </div>
-            
-            <div class="form-group">
-                <label for="location">Location</label>
-                <input type="text" id="location" name="location" 
-                       value="{% if camera %}{{ camera.location }}{% endif %}"
-                       placeholder="e.g., Main Entrance, Garage, Backyard">
-            </div>
-            
-            <div class="form-actions">
-                <a href="/dashboard" class="btn btn-secondary">Cancel</a>
-                <button type="submit" class="btn">{{ action }} Camera</button>
-            </div>
-        </form>
-    </div>
+<div style='max-width:600px; margin:40px auto;'>
+  <h2 style='color:white; text-align:center; margin-bottom:20px;'>{{ action }} Camera</h2>
+  <div class='card'>
+    {% if error %}<div class='alert alert-error'>{{ error }}</div>{% endif %}
+    <form method='POST' action='{% if camera %}/cameras/{{ camera.camera_id }}/edit{% else %}/cameras/new{% endif %}'>
+      {% if not camera %}
+      <div class='form-group'>
+        <label>Camera ID *</label>
+        <input type='text' name='camera_id' required placeholder='e.g. cam1, front_door'
+               pattern='[a-zA-Z0-9_-]+'>
+        <small style='color:#666;'>Must match the cameraId in your ESP32-CAM code</small>
+      </div>
+      {% endif %}
+      <div class='form-group'>
+        <label>Camera Name *</label>
+        <input type='text' name='name' required value='{% if camera %}{{ camera.name }}{% endif %}'>
+      </div>
+      <div class='form-group'>
+        <label>Location</label>
+        <input type='text' name='location' value='{% if camera %}{{ camera.location }}{% endif %}'>
+      </div>
+      <div style='display:flex; gap:15px; margin-top:20px;'>
+        <a href='/dashboard' class='btn btn-secondary' style='flex:1; text-align:center;'>Cancel</a>
+        <button type='submit' class='btn' style='flex:1;'>{{ action }} Camera</button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}
