@@ -98,7 +98,7 @@ def list_camera_images(camera_id, max_images=10):
         return []
 
 
-def delete_old_images(camera_id, keep_count=10):
+def delete_old_images(camera_id, keep_count=5000):
     """Delete old images, keeping only the latest keep_count images"""
     if not s3_client:
         return
@@ -117,3 +117,4 @@ def delete_old_images(camera_id, keep_count=10):
             s3_client.delete_object(Bucket=AWS_BUCKET, Key=obj['Key'])
     except ClientError as e:
         logger.error(f"❌ S3 delete error for {camera_id}: {e}")
+
