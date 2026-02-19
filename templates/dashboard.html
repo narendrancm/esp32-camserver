@@ -1,107 +1,347 @@
 {% extends 'base.html' %}
+
 {% block title %}Dashboard{% endblock %}
+
 {% block extra_styles %}
 <style>
-  .dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;}
-  .dashboard-header h2{color:white;font-size:28px;}
-  .cameras-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:30px;margin-top:20px;}
-  .camera-card{background:white;border-radius:15px;padding:25px;box-shadow:0 10px 30px rgba(0,0,0,.15);}
-  .camera-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
-  .camera-info h3{color:#333;font-size:22px;margin-bottom:8px;}
-  .camera-info p{color:#666;font-size:14px;margin:4px 0;}
-  .status-badge{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;}
-  .status-active{background:#d4edda;color:#155724;}
-  .status-inactive{background:#f8d7da;color:#721c24;}
-  .images-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0;}
-  .image-container{position:relative;padding-top:75%;background:#f0f0f0;border-radius:8px;
-                   overflow:hidden;cursor:pointer;transition:transform .2s;}
-  .image-container:hover{transform:scale(1.05);}
-  .image-container img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
-  .image-timestamp{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);
-                   color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;}
-  .no-images{text-align:center;padding:40px;color:#999;}
-  .camera-actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;}
-  .camera-actions .btn{flex:1;text-align:center;padding:10px;font-size:14px;min-width:80px;}
-  .empty-state{text-align:center;padding:60px 20px;color:white;}
-  .empty-state h3{font-size:24px;margin-bottom:15px;}
+.dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;}
+.dashboard-header h2{color:white;font-size:28px;}
+.cameras-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:30px;margin-top:20px;}
+.camera-card{background:white;border-radius:15px;padding:25px;box-shadow:0 10px 30px rgba(0,0,0,.15);}
+.camera-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
+.camera-info h3{color:#333;font-size:22px;margin-bottom:8px;}
+.camera-info p{color:#666;font-size:14px;margin:4px 0;}
+.status-badge{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;}
+.status-active{background:#d4edda;color:#155724;}
+.status-inactive{background:#f8d7da;color:#721c24;}
+.images-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0;}
+.image-container{position:relative;padding-top:75%;background:#f0f0f0;border-radius:8px;
+overflow:hidden;cursor:pointer;transition:transform .2s;}
+.image-container:hover{transform:scale(1.05);}
+.image-container img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
+.image-timestamp{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);
+color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;}
+.no-images{text-align:center;padding:40px;color:#999;}
+.camera-actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;}
+.camera-actions .btn{flex:1;text-align:center;padding:10px;font-size:14px;min-width:80px;}
+.empty-state{text-align:center;padding:60px 20px;color:white;}
+.empty-state h3{font-size:24px;margin-bottom:15px;}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.9);
+    overflow: auto;
+}
+
+.modal-content {
+    background-color: white;
+    margin: 2% auto;
+    padding: 20px;
+    width: 95%;
+    max-width: 1200px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 10px;
+    position: relative;
+}
+
+.close {
+    color: #aaa;
+    position: absolute;
+    right: 20px;
+    top: 10px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1001;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.modal h3 {
+    color: #667eea;
+    margin-bottom: 20px;
+    padding-right: 30px;
+}
+
+.modal-images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.modal-image-container {
+    position: relative;
+    padding-top: 75%;
+    background: #f0f0f0;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.modal-image-container:hover {
+    transform: scale(1.05);
+}
+
+.modal-image-container img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.modal-timestamp {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 5px;
+    font-size: 11px;
+    text-align: center;
+}
+
+.loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.loading-spinner:after {
+    content: '⏳';
+    font-size: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 </style>
 {% endblock %}
+
 {% block content %}
 <div class='dashboard-header'>
-  <h2>📹 Available Cameras</h2>
-  <a href='/cameras/new' class='btn'>➕ Add Camera</a>
+    <h2>📹 Available Cameras</h2>
+    <a href='/cameras/new' class='btn'>➕ Add Camera</a>
 </div>
+
 <div id='cameras-container' class='cameras-grid'>
-  <div style='color:white; padding:40px;'>Loading cameras...</div>
+    <div style='color:white; padding:40px;'>Loading cameras...</div>
 </div>
+
 <div id='empty-state' style='display:none;'>
-  <div class='empty-state'>
-    <h3>📹 No Cameras Yet</h3>
-    <p>Add your first ESP32-CAM to start monitoring</p>
-    <a href='/cameras/new' class='btn'>➕ Add Your First Camera</a>
-  </div>
+    <div class='empty-state'>
+        <h3>📹 No Cameras Yet</h3>
+        <p>Add your first ESP32-CAM to start monitoring</p>
+        <a href='/cameras/new' class='btn'>➕ Add Your First Camera</a>
+    </div>
 </div>
 {% endblock %}
+
 {% block extra_scripts %}
 <script>
-  function formatTimeAgo(ts) {
+function formatTimeAgo(ts) {
     const s = Math.floor((new Date() - new Date(ts)) / 1000);
-    if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';
-    if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';
-  }
-  function formatTime(ts){
-    return new Date(ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
-  }
-  async function loadImages(cameraId){
-    try{const r=await fetch('/api/images/'+cameraId);
-    if(!r.ok){if(r.status===401)window.location.href='/login';return [];}
-    const d=await r.json();return d.images||[];}catch(e){return [];}
-  }
-  async function getStatus(cameraId){
-    try{const r=await fetch('/api/camera/'+cameraId+'/status');
-    if(!r.ok)return{status:'inactive',last_seen:'Unknown'};
-    return await r.json();}catch(e){return{status:'inactive',last_seen:'Unknown'};}
-  }
-  async function deleteCamera(cameraId){
-    if(!confirm('Delete this camera?'))return;
-    const f=document.createElement('form');f.method='POST';
-    f.action='/cameras/'+cameraId+'/delete';document.body.appendChild(f);f.submit();
-  }
-  function renderCard(camera, images, status){
+    if(s<60)return s+'s ago';
+    if(s<3600)return Math.floor(s/60)+'m ago';
+    if(s<86400)return Math.floor(s/3600)+'h ago';
+    return Math.floor(s/86400)+'d ago';
+}
+
+function formatTime(ts){
+    return new Date(ts).toLocaleTimeString('en-US',{
+        hour:'2-digit',
+        minute:'2-digit',
+        second:'2-digit',
+        hour12:false
+    });
+}
+
+async function loadImages(cameraId){
+    try{
+        const r=await fetch('/api/images/'+cameraId);
+        if(!r.ok){
+            if(r.status===401) window.location.href='/login';
+            return [];
+        }
+        const d=await r.json();
+        return d.images||[];
+    }catch(e){
+        console.error('Error loading images:', e);
+        return [];
+    }
+}
+
+async function loadAllImages(cameraId, limit=50){
+    try{
+        const r=await fetch(`/api/images/all/${cameraId}?limit=${limit}`);
+        if(!r.ok) return [];
+        const d=await r.json();
+        return d.images||[];
+    }catch(e){
+        console.error('Error loading all images:', e);
+        return [];
+    }
+}
+
+async function getStatus(cameraId){
+    try{
+        const r=await fetch('/api/camera/'+cameraId+'/status');
+        if(!r.ok) return{status:'inactive',last_seen:'Unknown'};
+        return await r.json();
+    }catch(e){
+        console.error('Error getting status:', e);
+        return{status:'inactive',last_seen:'Unknown'};
+    }
+}
+
+async function deleteCamera(cameraId){
+    if(!confirm('Delete this camera?')) return;
+    const f=document.createElement('form');
+    f.method='POST';
+    f.action='/cameras/'+cameraId+'/delete';
+    document.body.appendChild(f);
+    f.submit();
+}
+
+async function showAllImages(cameraId, cameraName) {
+    const modal = document.getElementById(`modal-${cameraId}`);
+    if (!modal) {
+        // Create modal if it doesn't exist
+        createModal(cameraId, cameraName);
+    }
+    
+    // Show modal with loading spinner
+    const modalElement = document.getElementById(`modal-${cameraId}`);
+    const container = document.getElementById(`modal-images-${cameraId}`);
+    container.innerHTML = '<div class="loading-spinner">Loading images...</div>';
+    modalElement.style.display = 'block';
+    
+    // Load images
+    const images = await loadAllImages(cameraId, 100);
+    
+    if (images.length === 0) {
+        container.innerHTML = '<div class="no-images">No images found</div>';
+        return;
+    }
+    
+    // Display images
+    container.innerHTML = '';
+    images.forEach(img => {
+        const date = new Date(img.timestamp);
+        const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        container.innerHTML += `
+            <div class="modal-image-container" onclick="window.open('${img.url}','_blank')">
+                <img src="${img.url}" loading="lazy">
+                <div class="modal-timestamp">${timeStr}</div>
+            </div>
+        `;
+    });
+}
+
+function createModal(cameraId, cameraName) {
+    const modalHTML = `
+        <div id="modal-${cameraId}" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('${cameraId}')">&times;</span>
+                <h3>📸 ${cameraName} - All Images</h3>
+                <div id="modal-images-${cameraId}" class="modal-images-grid"></div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+function closeModal(cameraId) {
+    document.getElementById(`modal-${cameraId}`).style.display = 'none';
+}
+
+function renderCard(camera, images, status){
     const sc=status.status==='active'?'status-active':'status-inactive';
     const st=status.status==='active'?'🟢 Active':'🔴 Inactive';
+    
     let imgs='';
     if(images&&images.length>0){
-      imgs='<div class="images-grid">';
-      images.forEach(img=>{imgs+=`<div class="image-container" onclick="window.open('${img.url}','_blank')">
-        <img src="${img.url}" loading="lazy">
-        <div class="image-timestamp">${formatTime(img.timestamp)}</div></div>`;});
-      imgs+='</div>';
-    }else{imgs=`<div class="no-images">${status.status==='active'?'📸 Waiting for upload...':'📴 Camera offline'}</div>`;}
-    let actions=`<button onclick="location.reload()" class="btn">🔄 Refresh</button>`;
-    if(camera.role==='owner'||camera.can_edit)actions+=`<a href="/cameras/${camera.camera_id}/edit" class="btn btn-secondary">✏ Edit</a>`;
-    if(camera.role==='owner')actions+=`<a href="/cameras/${camera.camera_id}/share" class="btn" style="background:#9b59b6;">🔗 Share</a>`;
-    if(camera.role==='owner')actions+=`<button onclick="deleteCamera('${camera.camera_id}')" class="btn btn-danger">🗑 Delete</button>`;
+        imgs='<div class="images-grid">';
+        images.forEach(img=>{
+            imgs+=`<div class="image-container" onclick="window.open('${img.url}','_blank')">
+                <img src="${img.url}" loading="lazy">
+                <div class="image-timestamp">${formatTime(img.timestamp)}</div>
+            </div>`;
+        });
+        imgs+='</div>';
+    }else{
+        imgs=`<div class="no-images">${status.status==='active'?'📸 Waiting for upload...':'📴 Camera offline'}</div>`;
+    }
+    
+    let actions=`
+        <button onclick="location.reload()" class="btn">🔄 Refresh</button>
+        <button onclick="showAllImages('${camera.camera_id}', '${camera.name}')" class="btn" style="background:#3498db;">📚 View All</button>
+    `;
+    
+    if(camera.role==='owner'||camera.can_edit){
+        actions+=`<a href="/cameras/${camera.camera_id}/edit" class="btn btn-secondary">✏ Edit</a>`;
+    }
+    if(camera.role==='owner'){
+        actions+=`<a href="/cameras/${camera.camera_id}/share" class="btn" style="background:#9b59b6;">🔗 Share</a>`;
+        actions+=`<button onclick="deleteCamera('${camera.camera_id}')" class="btn btn-danger">🗑 Delete</button>`;
+    }
+    
     return `<div class="camera-card" data-camera-id="${camera.camera_id}">
-      <div class="camera-header"><div class="camera-info">
-        <h3>${camera.name}</h3><p>📍 ${camera.location||'No location'}</p>
-        <p>🏷 ID: ${camera.camera_id}</p>
-        <p>🕐 Last seen: <span class="last-seen">${status.last_seen}</span></p>
-      </div><span class="status-badge ${sc}">${st}</span></div>
-      ${imgs}<div class="camera-actions">${actions}</div></div>`;
-  }
-  async function loadAll(){
+        <div class="camera-header">
+            <div class="camera-info">
+                <h3>${camera.name}</h3>
+                <p>📍 ${camera.location||'No location'}</p>
+                <p>🏷 ID: ${camera.camera_id}</p>
+                <p>🕐 Last seen: <span class="last-seen">${status.last_seen}</span></p>
+            </div>
+            <span class="status-badge ${sc}">${st}</span>
+        </div>
+        ${imgs}
+        <div class="camera-actions">${actions}</div>
+    </div>`;
+}
+
+async function loadAll(){
     const c=document.getElementById('cameras-container');
     const e=document.getElementById('empty-state');
     const cameras={{ cameras|tojson }};
-    if(!cameras||cameras.length===0){c.style.display='none';e.style.display='block';return;}
-    c.innerHTML=''; c.style.display='grid'; e.style.display='none';
-    for(const cam of cameras){
-      const [imgs,status]=await Promise.all([loadImages(cam.camera_id),getStatus(cam.camera_id)]);
-      c.innerHTML+=renderCard(cam,imgs,status);
+    
+    if(!cameras||cameras.length===0){
+        c.style.display='none';
+        e.style.display='block';
+        return;
     }
-  }
-  document.addEventListener('DOMContentLoaded',loadAll);
-  setInterval(loadAll,30000);
+    
+    c.innerHTML='';
+    c.style.display='grid';
+    e.style.display='none';
+    
+    for(const cam of cameras){
+        const [imgs,status]=await Promise.all([
+            loadImages(cam.camera_id),
+            getStatus(cam.camera_id)
+        ]);
+        c.innerHTML+=renderCard(cam,imgs,status);
+    }
+}
+
+document.addEventListener('DOMContentLoaded',loadAll);
+setInterval(loadAll,30000);
 </script>
 {% endblock %}
