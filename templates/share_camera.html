@@ -1,228 +1,50 @@
-{% extends "base.html" %}
-
-{% block title %}Share Camera - ESP32-CAM Surveillance{% endblock %}
-
-{% block extra_styles %}
-<style>
-    .share-container {
-        max-width: 800px;
-        margin: 40px auto;
-    }
-    
-    .share-header {
-        text-align: center;
-        margin-bottom: 30px;
-    }
-    
-    .share-header h2 {
-        color: white;
-        font-size: 32px;
-        margin-bottom: 10px;
-    }
-    
-    .share-header p {
-        color: rgba(255,255,255,0.9);
-    }
-    
-    .camera-info {
-        background: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        margin: 20px 0;
-        border-left: 4px solid #667eea;
-    }
-    
-    .camera-info p {
-        margin: 8px 0;
-        color: #555;
-    }
-    
-    .camera-info strong {
-        color: #333;
-        width: 100px;
-        display: inline-block;
-    }
-    
-    .share-form {
-        background: #f8f9fa;
-        padding: 25px;
-        border-radius: 10px;
-        margin: 25px 0;
-    }
-    
-    .form-group {
-        margin-bottom: 20px;
-    }
-    
-    label {
-        display: block;
-        margin-bottom: 8px;
-        color: #333;
-        font-weight: 600;
-    }
-    
-    select {
-        width: 100%;
-        padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 6px;
-        font-size: 16px;
-    }
-    
-    select:focus {
-        outline: none;
-        border-color: #667eea;
-    }
-    
-    .checkbox-group {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    
-    .checkbox-group input {
-        width: auto;
-    }
-    
-    .checkbox-group label {
-        display: inline;
-        margin: 0;
-    }
-    
-    .share-list {
-        list-style: none;
-        padding: 0;
-        margin: 20px 0;
-    }
-    
-    .share-item {
-        background: white;
-        border: 1px solid #e0e0e0;
-        padding: 15px 20px;
-        margin: 10px 0;
-        border-radius: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .user-info {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .user-name {
-        font-weight: 600;
-        color: #333;
-        font-size: 16px;
-    }
-    
-    .user-email {
-        color: #666;
-        font-size: 14px;
-        margin-top: 3px;
-    }
-    
-    .edit-badge {
-        background: #48bb78;
-        color: white;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        display: inline-block;
-        margin-top: 5px;
-    }
-    
-    .btn-danger {
-        background: #dc3545;
-    }
-    
-    .empty-message {
-        color: #666;
-        font-style: italic;
-        padding: 20px;
-        text-align: center;
-        background: #f8f9fa;
-        border-radius: 8px;
-    }
-    
-    .info-text {
-        color: #666;
-        font-size: 14px;
-        margin-top: 15px;
-        padding: 10px;
-        background: #e8f4f8;
-        border-radius: 6px;
-    }
-</style>
-{% endblock %}
-
+{% extends 'base.html' %}
+{% block title %}Share Camera{% endblock %}
 {% block content %}
-<div class="share-container">
-    <div class="share-header">
-        <h2>🔗 Share Camera</h2>
-        <p>Grant access to other users</p>
+<div style='max-width:800px; margin:40px auto;'>
+  <h2 style='color:white; text-align:center; margin-bottom:20px;'>🔗 Share Camera</h2>
+  <div class='card'>
+    <p><strong>Camera ID:</strong> {{ camera.camera_id }}</p>
+    <p><strong>Name:</strong> {{ camera.name }}</p>
+    <hr style='margin:20px 0;'>
+    <h3>Share with another user</h3>
+    <form method='POST' style='margin-top:15px;'>
+      <div class='form-group'>
+        <label>Select User:</label>
+        <select name='user_id' required style='width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:6px;'>
+          <option value=''>-- Choose a user --</option>
+          {% for other in other_users %}
+          <option value='{{ other.id }}'>{{ other.username }} ({{ other.email }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style='display:flex; align-items:center; gap:10px; margin-bottom:15px;'>
+        <input type='checkbox' name='can_edit' id='can_edit'>
+        <label for='can_edit'>Allow user to edit camera settings</label>
+      </div>
+      <button type='submit' class='btn'>Share Camera</button>
+    </form>
+    <hr style='margin:20px 0;'>
+    <h3>Currently Shared With:</h3>
+    {% if shares %}
+    {% for share in shares %}
+    <div style='display:flex; justify-content:space-between; align-items:center;
+                padding:15px; border:1px solid #e0e0e0; border-radius:8px; margin:10px 0;'>
+      <div>
+        <strong>{{ share.shared_user.username }}</strong>
+        <span style='color:#666; font-size:14px;'>({{ share.shared_user.email }})</span>
+        {% if share.can_edit %}<span style='background:#48bb78; color:white; padding:2px 8px;
+          border-radius:12px; font-size:12px; margin-left:8px;'>Can Edit</span>{% endif %}
+      </div>
+      <form method='POST' action='/cameras/{{ camera.camera_id }}/unshare/{{ share.shared_user.id }}'>
+        <button type='submit' class='btn btn-danger' style='padding:8px 16px;'>Remove</button>
+      </form>
     </div>
-    
-    <div class="card">
-        <div class="camera-info">
-            <p><strong>Camera ID:</strong> {{ camera.camera_id }}</p>
-            <p><strong>Name:</strong> {{ camera.name }}</p>
-            <p><strong>Location:</strong> {{ camera.location }}</p>
-        </div>
-        
-        <div class="share-form">
-            <h3>Share with another user</h3>
-            <form method="POST">
-                <div class="form-group">
-                    <label for="user_id">Select User:</label>
-                    <select name="user_id" id="user_id" required>
-                        <option value="">-- Choose a user --</option>
-                        {% for other in other_users %}
-                        <option value="{{ other.id }}">{{ other.username }} ({{ other.email }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" name="can_edit" id="can_edit">
-                    <label for="can_edit">Allow user to edit camera settings</label>
-                </div>
-                
-                <button type="submit" class="btn">Share Camera</button>
-            </form>
-            
-            <div class="info-text">
-                <p>📌 Users with view access can see all images from this camera.</p>
-                <p>📌 Users with edit access can also modify camera name and location.</p>
-            </div>
-        </div>
-        
-        <h3>Currently Shared With:</h3>
-        {% if shares %}
-        <ul class="share-list">
-            {% for share in shares %}
-            <li class="share-item">
-                <div class="user-info">
-                    <span class="user-name">{{ share.shared_user.username }}</span>
-                    <span class="user-email">{{ share.shared_user.email }}</span>
-                    {% if share.can_edit %}
-                    <span class="edit-badge">Can Edit</span>
-                    {% endif %}
-                </div>
-                <form method="POST" action="/cameras/{{ camera.camera_id }}/unshare/{{ share.shared_user.id }}">
-                    <button type="submit" class="btn btn-danger">Remove</button>
-                </form>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="empty-message">This camera hasn't been shared with anyone yet.</p>
-        {% endif %}
-        
-        <div style="margin-top: 20px;">
-            <a href="/dashboard" class="btn btn-secondary">← Back to Dashboard</a>
-        </div>
-    </div>
+    {% endfor %}
+    {% else %}
+    <p style='color:#666; font-style:italic;'>Not shared with anyone yet.</p>
+    {% endif %}
+    <a href='/dashboard' class='btn btn-secondary' style='margin-top:20px; display:inline-block;'>← Back</a>
+  </div>
 </div>
 {% endblock %}
