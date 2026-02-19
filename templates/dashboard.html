@@ -26,111 +26,6 @@ color:white;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;}
 .camera-actions .btn{flex:1;text-align:center;padding:10px;font-size:14px;min-width:80px;}
 .empty-state{text-align:center;padding:60px 20px;color:white;}
 .empty-state h3{font-size:24px;margin-bottom:15px;}
-
-/* Modal Styles */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.9);
-    overflow: auto;
-}
-
-.modal-content {
-    background-color: white;
-    margin: 2% auto;
-    padding: 20px;
-    width: 95%;
-    max-width: 1200px;
-    max-height: 90vh;
-    overflow-y: auto;
-    border-radius: 10px;
-    position: relative;
-}
-
-.close {
-    color: #aaa;
-    position: absolute;
-    right: 20px;
-    top: 10px;
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    z-index: 1001;
-}
-
-.close:hover {
-    color: #333;
-}
-
-.modal h3 {
-    color: #667eea;
-    margin-bottom: 20px;
-    padding-right: 30px;
-}
-
-.modal-images-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 15px;
-    margin-top: 20px;
-}
-
-.modal-image-container {
-    position: relative;
-    padding-top: 75%;
-    background: #f0f0f0;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.modal-image-container:hover {
-    transform: scale(1.05);
-}
-
-.modal-image-container img {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.modal-timestamp {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(0,0,0,0.7);
-    color: white;
-    padding: 5px;
-    font-size: 11px;
-    text-align: center;
-}
-
-.loading-spinner {
-    text-align: center;
-    padding: 40px;
-    color: #666;
-}
-
-.loading-spinner:after {
-    content: '⏳';
-    font-size: 24px;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
 </style>
 {% endblock %}
 
@@ -187,18 +82,6 @@ async function loadImages(cameraId){
     }
 }
 
-async function loadAllImages(cameraId, limit=50){
-    try{
-        const r=await fetch(`/api/images/all/${cameraId}?limit=${limit}`);
-        if(!r.ok) return [];
-        const d=await r.json();
-        return d.images||[];
-    }catch(e){
-        console.error('Error loading all images:', e);
-        return [];
-    }
-}
-
 async function getStatus(cameraId){
     try{
         const r=await fetch('/api/camera/'+cameraId+'/status');
@@ -211,64 +94,12 @@ async function getStatus(cameraId){
 }
 
 async function deleteCamera(cameraId){
-    if(!confirm('Delete this camera?')) return;
+    if(!confirm('Delete this camera? All images will remain in S3 but will no longer be accessible through the dashboard.')) return;
     const f=document.createElement('form');
     f.method='POST';
     f.action='/cameras/'+cameraId+'/delete';
     document.body.appendChild(f);
     f.submit();
-}
-
-async function showAllImages(cameraId, cameraName) {
-    const modal = document.getElementById(`modal-${cameraId}`);
-    if (!modal) {
-        // Create modal if it doesn't exist
-        createModal(cameraId, cameraName);
-    }
-    
-    // Show modal with loading spinner
-    const modalElement = document.getElementById(`modal-${cameraId}`);
-    const container = document.getElementById(`modal-images-${cameraId}`);
-    container.innerHTML = '<div class="loading-spinner">Loading images...</div>';
-    modalElement.style.display = 'block';
-    
-    // Load images
-    const images = await loadAllImages(cameraId, 100);
-    
-    if (images.length === 0) {
-        container.innerHTML = '<div class="no-images">No images found</div>';
-        return;
-    }
-    
-    // Display images
-    container.innerHTML = '';
-    images.forEach(img => {
-        const date = new Date(img.timestamp);
-        const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-        container.innerHTML += `
-            <div class="modal-image-container" onclick="window.open('${img.url}','_blank')">
-                <img src="${img.url}" loading="lazy">
-                <div class="modal-timestamp">${timeStr}</div>
-            </div>
-        `;
-    });
-}
-
-function createModal(cameraId, cameraName) {
-    const modalHTML = `
-        <div id="modal-${cameraId}" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="closeModal('${cameraId}')">&times;</span>
-                <h3>📸 ${cameraName} - All Images</h3>
-                <div id="modal-images-${cameraId}" class="modal-images-grid"></div>
-            </div>
-        </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-}
-
-function closeModal(cameraId) {
-    document.getElementById(`modal-${cameraId}`).style.display = 'none';
 }
 
 function renderCard(camera, images, status){
@@ -291,7 +122,6 @@ function renderCard(camera, images, status){
     
     let actions=`
         <button onclick="location.reload()" class="btn">🔄 Refresh</button>
-        <button onclick="showAllImages('${camera.camera_id}', '${camera.name}')" class="btn" style="background:#3498db;">📚 View All</button>
     `;
     
     if(camera.role==='owner'||camera.can_edit){
@@ -333,15 +163,22 @@ async function loadAll(){
     e.style.display='none';
     
     for(const cam of cameras){
-        const [imgs,status]=await Promise.all([
-            loadImages(cam.camera_id),
-            getStatus(cam.camera_id)
-        ]);
-        c.innerHTML+=renderCard(cam,imgs,status);
+        try {
+            const [imgs,status]=await Promise.all([
+                loadImages(cam.camera_id),
+                getStatus(cam.camera_id)
+            ]);
+            c.innerHTML+=renderCard(cam,imgs,status);
+        } catch (error) {
+            console.error('Error rendering camera:', cam.camera_id, error);
+        }
     }
 }
 
+// Load cameras on page load
 document.addEventListener('DOMContentLoaded',loadAll);
+
+// Refresh every 30 seconds
 setInterval(loadAll,30000);
 </script>
 {% endblock %}
