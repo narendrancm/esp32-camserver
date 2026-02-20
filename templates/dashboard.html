@@ -275,7 +275,7 @@
                 if (response.status === 401) {
                     console.error('❌ Not authenticated - please login again');
                     window.location.href = '/login';
-                    return { status: 'inactive', last_seen: 'Unknown', can_edit: false };
+                    return { status: 'inactive', last_seen: 'Unknown' };
                 }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -284,7 +284,7 @@
             return data;
         } catch (error) {
             console.error('Error getting camera status:', error);
-            return { status: 'inactive', last_seen: 'Unknown', can_edit: false };
+            return { status: 'inactive', last_seen: 'Unknown' };
         }
     }
     
@@ -450,28 +450,10 @@
         });
     }
     
-    // Check authentication status
-    async function checkAuth() {
-        try {
-            const response = await fetch('/debug');
-            const data = await response.json();
-            console.log('Auth status:', data);
-            
-            if (!data.session || !data.session.user_id) {
-                console.log('❌ Not authenticated, redirecting to login');
-                window.location.href = '/login';
-            }
-        } catch (error) {
-            console.error('Error checking auth:', error);
-        }
-    }
-    
     // Initial load
     document.addEventListener('DOMContentLoaded', () => {
         console.log('📹 Dashboard loaded');
-        checkAuth().then(() => {
-            loadAllCameras();
-        });
+        loadAllCameras();
     });
     
     // Auto-refresh every 30 seconds
