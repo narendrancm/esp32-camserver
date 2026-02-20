@@ -49,14 +49,13 @@ def upload_to_s3(file_content, filename):
             }
         )
         logger.info(f"✅ Upload successful to S3: {filename}")
-        logger.info(f"✅ Response: {response}")
         return True
     except ClientError as e:
         logger.error(f"❌ S3 upload error: {e}")
         return False
 
 def get_presigned_url(filename, expiration=3600):
-    """Generate presigned URL for S3 object with cache control"""
+    """Generate presigned URL for S3 object"""
     if not s3_client:
         logger.error("S3 client not initialized")
         return None
@@ -68,12 +67,11 @@ def get_presigned_url(filename, expiration=3600):
             Params={
                 'Bucket': AWS_BUCKET, 
                 'Key': filename,
-                'ResponseContentType': 'image/jpeg',
-                'ResponseCacheControl': 'no-cache, no-store, must-revalidate'
+                'ResponseContentType': 'image/jpeg'
             },
             ExpiresIn=expiration
         )
-        logger.info(f"✅ Generated URL: {url[:100]}...")  # Log first 100 chars
+        logger.info(f"✅ Generated URL successfully")
         return url
     except ClientError as e:
         logger.error(f"❌ Presigned URL error for {filename}: {e}")
@@ -101,10 +99,6 @@ def list_camera_images(camera_id, max_images=6):
         
         logger.info(f"Found {len(response['Contents'])} total images for {camera_id}")
         
-        # Log first few keys to verify
-        for obj in response['Contents'][:3]:
-            logger.info(f"Found object: {obj['Key']} - {obj['LastModified']}")
-        
         # Sort by LastModified in DESCENDING order (newest first)
         objects = sorted(
             response['Contents'],
@@ -114,7 +108,6 @@ def list_camera_images(camera_id, max_images=6):
         
         if objects:
             logger.info(f"Newest image timestamp: {objects[0]['LastModified']}")
-            logger.info(f"Oldest image timestamp: {objects[-1]['LastModified']}")
         
         # Get only the latest max_images for display
         images = []
@@ -122,18 +115,15 @@ def list_camera_images(camera_id, max_images=6):
             # Generate presigned URL for each image
             url = get_presigned_url(obj['Key'])
             if url:
-                # Add cache busting parameter
-                cache_busted_url = f"{url}&_t={datetime.now().timestamp()}"
-                
                 image_data = {
                     'key': obj['Key'],
-                    'url': cache_busted_url,
+                    'url': url,
                     'timestamp': obj['LastModified'].isoformat(),
                     'size': obj['Size'],
                     'display_order': i + 1
                 }
                 images.append(image_data)
-                logger.info(f"✅ Display image {i+1}: {obj['Key']} - {obj['LastModified']}")
+                logger.info(f"✅ Display image {i+1}: {obj['Key']}")
             else:
                 logger.error(f"❌ Failed to generate URL for {obj['Key']}")
         
