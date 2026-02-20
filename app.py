@@ -11,7 +11,7 @@ import traceback
 from config import SECRET_KEY, IMAGES_PER_CAMERA, CAMERA_TIMEOUT_MINUTES
 from models import Base, User, Camera, CameraShare, engine, get_db
 from auth import hash_password, verify_password
-from s3_helper import upload_to_s3, get_presigned_url, list_camera_images, delete_old_images
+from s3_helper import upload_to_s3, get_presigned_url, list_camera_images
 
 # Initialize FastAPI
 app = FastAPI(title="Surveillance Cam")
@@ -212,15 +212,14 @@ async def upload_image(
                 camera_id=camera_id,
                 name=f"Camera {camera_id}",
                 location="Auto-detected",
-                user_id=1
+                user_id=1  # Assign to admin by default
             )
             db.add(camera)
             db.flush()
         
         # Update last_seen timestamp
-        old_last_seen = camera.last_seen
         camera.last_seen = datetime.utcnow()
-        print(f"📸 Updated last_seen from {old_last_seen} to {camera.last_seen}")
+        print(f"📸 Updated last_seen to {camera.last_seen}")
         db.commit()
         
         # Read file content
@@ -237,8 +236,6 @@ async def upload_image(
         
         if success:
             print(f"✅ Upload successful to S3: {filename}")
-            delete_old_images(camera_id, IMAGES_PER_CAMERA)
-            print(f"✅ Upload complete for camera {camera_id}")
             return JSONResponse({"status": "success", "message": "Image uploaded"})
         else:
             print(f"❌ S3 upload failed: {filename}")
@@ -261,7 +258,7 @@ async def get_camera_images(
     user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
-    """Get images for a camera - UPDATED with cache busting"""
+    """Get images for a camera - shows latest 6 images"""
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -276,7 +273,7 @@ async def get_camera_images(
     if not (is_owner or is_shared):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Get images from S3 (now sorted newest first by s3_helper)
+    # Get images from S3 (shows latest 6 for display)
     images = list_camera_images(camera_id, IMAGES_PER_CAMERA)
     
     # Add cache control headers
@@ -354,6 +351,10 @@ async def share_camera_page(
     shares = db.query(CameraShare).filter(
         CameraShare.camera_id == camera.id
     ).all()
+    
+    # Load user objects for each share
+    for share in shares:
+        share.shared_user = db.query(User).filter(User.id == share.shared_with_user_id).first()
     
     other_users = db.query(User).filter(User.id != user.id).all()
     
