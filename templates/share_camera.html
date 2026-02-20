@@ -36,7 +36,7 @@
         {% if share.can_edit %}<span style='background:#48bb78; color:white; padding:2px 8px;
           border-radius:12px; font-size:12px; margin-left:8px;'>Can Edit</span>{% endif %}
       </div>
-      <form method='POST' action='/cameras/{{ camera.camera_id }}/unshare/{{ share.shared_user.id }}'>
+      <form method='POST' action='/cameras/{{ camera.camera_id }}/unshare/{{ share.shared_with_user_id }}'>
         <button type='submit' class='btn btn-danger' style='padding:8px 16px;'>Remove</button>
       </form>
     </div>
