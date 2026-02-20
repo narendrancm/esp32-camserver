@@ -17,7 +17,7 @@ from s3_helper import upload_to_s3, get_presigned_url, list_camera_images
 app = FastAPI(title="Surveillance Cam")
 
 # Add session middleware
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=86400)  # 24 hours
 
 # Templates
 templates = Jinja2Templates(directory="templates")
@@ -42,17 +42,34 @@ def create_default_admin():
 
 create_default_admin()
 
+# Debug endpoint to check session
+@app.get("/debug")
+async def debug_session(request: Request):
+    """Debug endpoint to check session status"""
+    return JSONResponse({
+        "session": dict(request.session),
+        "cookies": request.cookies,
+        "headers": dict(request.headers)
+    })
+
 # Helper function to get current user
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     user_id = request.session.get("user_id")
+    print(f"🔍 get_current_user - Session user_id: {user_id}")
     if not user_id:
         return None
-    return db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        print(f"✅ Found user: {user.username}")
+    else:
+        print(f"❌ User not found for id: {user_id}")
+    return user
 
 # Helper function to require login
 def require_login(request: Request, db: Session = Depends(get_db)) -> User:
     user = get_current_user(request, db)
     if not user:
+        print("❌ require_login - No authenticated user")
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
@@ -75,18 +92,27 @@ async def login(request: Request, db: Session = Depends(get_db)):
     username = form.get("username")
     password = form.get("password")
     
+    print(f"🔐 Login attempt for username: {username}")
+    
     user = db.query(User).filter(User.username == username).first()
     
     if not user or not verify_password(password, user.password_hash):
+        print("❌ Login failed: Invalid credentials")
         return templates.TemplateResponse("login.html", {
             "request": request,
             "session": request.session,
             "error": "Invalid username or password"
         })
     
+    # Set session data
     request.session["user_id"] = user.id
     request.session["username"] = user.username
-    return RedirectResponse(url="/dashboard", status_code=302)
+    
+    print(f"✅ Login successful for user: {user.username} (ID: {user.id})")
+    print(f"📝 Session data after login: {dict(request.session)}")
+    
+    response = RedirectResponse(url="/dashboard", status_code=302)
+    return response
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
@@ -134,6 +160,8 @@ async def register(request: Request, db: Session = Depends(get_db)):
     
     request.session["user_id"] = new_user.id
     request.session["username"] = new_user.username
+    
+    print(f"✅ Registration successful for user: {username}")
     return RedirectResponse(url="/dashboard", status_code=302)
 
 @app.get("/logout")
@@ -142,7 +170,23 @@ async def logout(request: Request):
     return RedirectResponse(url="/login", status_code=302)
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, user: User = Depends(require_login), db: Session = Depends(get_db)):
+async def dashboard(request: Request, db: Session = Depends(get_db)):
+    # Manually check authentication
+    user_id = request.session.get("user_id")
+    print(f"🏠 Dashboard access - Session user_id: {user_id}")
+    
+    if not user_id:
+        print("❌ Dashboard - No user_id in session, redirecting to login")
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        print(f"❌ Dashboard - User with id {user_id} not found, clearing session")
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
+    print(f"✅ Dashboard - User authenticated: {user.username}")
+    
     # Get cameras owned by user
     owned_cameras = db.query(Camera).filter(Camera.user_id == user.id).all()
     
@@ -255,10 +299,19 @@ async def upload_image(
 @app.get("/api/images/{camera_id}")
 async def get_camera_images(
     camera_id: str,
-    user: User = Depends(require_login),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Get images for a camera - shows latest 6 images"""
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -293,9 +346,18 @@ async def get_camera_images(
 @app.get("/api/camera/{camera_id}/status")
 async def get_camera_status(
     camera_id: str,
-    user: User = Depends(require_login),
+    request: Request,
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -337,9 +399,18 @@ async def get_camera_status(
 async def share_camera_page(
     camera_id: str,
     request: Request,
-    user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     camera = db.query(Camera).filter(
         Camera.camera_id == camera_id,
         Camera.user_id == user.id
@@ -351,10 +422,6 @@ async def share_camera_page(
     shares = db.query(CameraShare).filter(
         CameraShare.camera_id == camera.id
     ).all()
-    
-    # Load user objects for each share
-    for share in shares:
-        share.shared_user = db.query(User).filter(User.id == share.shared_with_user_id).first()
     
     other_users = db.query(User).filter(User.id != user.id).all()
     
@@ -371,9 +438,18 @@ async def share_camera_page(
 async def share_camera(
     camera_id: str,
     request: Request,
-    user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     form = await request.form()
     shared_user_id = form.get("user_id")
     can_edit = form.get("can_edit") == "on"
@@ -408,9 +484,19 @@ async def share_camera(
 async def unshare_camera(
     camera_id: str,
     user_id: int,
-    user: User = Depends(require_login),
+    request: Request,
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    session_user_id = request.session.get("user_id")
+    if not session_user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == session_user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     camera = db.query(Camera).filter(
         Camera.camera_id == camera_id,
         Camera.user_id == user.id
@@ -428,7 +514,17 @@ async def unshare_camera(
     return RedirectResponse(url=f"/cameras/{camera_id}/share", status_code=302)
 
 @app.get("/cameras/new", response_class=HTMLResponse)
-async def new_camera_page(request: Request, user: User = Depends(require_login)):
+async def new_camera_page(request: Request, db: Session = Depends(get_db)):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     return templates.TemplateResponse("edit_camera.html", {
         "request": request,
         "session": request.session,
@@ -440,9 +536,18 @@ async def new_camera_page(request: Request, user: User = Depends(require_login))
 @app.post("/cameras/new")
 async def create_camera(
     request: Request,
-    user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     form = await request.form()
     camera_id = form.get("camera_id")
     name = form.get("name")
@@ -473,9 +578,18 @@ async def create_camera(
 async def edit_camera_page(
     camera_id: str,
     request: Request,
-    user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     camera = db.query(Camera).filter(
         Camera.camera_id == camera_id,
         Camera.user_id == user.id
@@ -496,9 +610,18 @@ async def edit_camera_page(
 async def update_camera(
     camera_id: str,
     request: Request,
-    user: User = Depends(require_login),
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     camera = db.query(Camera).filter(
         Camera.camera_id == camera_id,
         Camera.user_id == user.id
@@ -517,9 +640,19 @@ async def update_camera(
 @app.post("/cameras/{camera_id}/delete")
 async def delete_camera(
     camera_id: str,
-    user: User = Depends(require_login),
+    request: Request,
     db: Session = Depends(get_db)
 ):
+    # Check authentication manually
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     camera = db.query(Camera).filter(
         Camera.camera_id == camera_id,
         Camera.user_id == user.id
