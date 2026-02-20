@@ -1,6 +1,6 @@
 import boto3
 from botocore.exceptions import ClientError
-from config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, AWS_BUCKET, MAX_STORAGE_GB
+from config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, AWS_BUCKET
 from datetime import datetime
 import logging
 
@@ -22,7 +22,7 @@ except Exception as e:
     s3_client = None
 
 def upload_to_s3(file_content, filename):
-    """Upload file to S3 bucket"""
+    """Upload file to S3 bucket - KEEPS ALL IMAGES, no deletion"""
     if not s3_client:
         logger.error("S3 client not initialized")
         return False
@@ -34,11 +34,7 @@ def upload_to_s3(file_content, filename):
         file_size = len(file_content)
         logger.info(f"📏 File size: {file_size} bytes")
         
-        # Check storage before uploading
-        if not check_storage_limit(file_size):
-            logger.warning("⚠️ Storage limit reached, cleaning up old images...")
-            cleanup_storage(file_size)
-        
+        # Upload to S3 - KEEP ALL IMAGES, no deletion
         response = s3_client.put_object(
             Bucket=AWS_BUCKET,
             Key=filename,
@@ -48,88 +44,14 @@ def upload_to_s3(file_content, filename):
                 'upload_time': datetime.utcnow().isoformat()
             }
         )
-        logger.info(f"✅ Upload successful: {filename}")
+        logger.info(f"✅ Upload successful to S3: {filename}")
         return True
     except ClientError as e:
         logger.error(f"❌ S3 upload error: {e}")
         return False
 
-def check_storage_limit(new_file_size_bytes):
-    """Check if adding new file would exceed storage limit"""
-    if not s3_client:
-        return True
-        
-    try:
-        # Get total bucket size
-        response = s3_client.list_objects_v2(Bucket=AWS_BUCKET)
-        
-        total_size_bytes = 0
-        if 'Contents' in response:
-            total_size_bytes = sum(obj['Size'] for obj in response['Contents'])
-        
-        max_size_bytes = MAX_STORAGE_GB * 1024 * 1024 * 1024
-        
-        logger.info(f"📊 Current storage: {total_size_bytes / (1024*1024):.2f}MB / {MAX_STORAGE_GB}GB")
-        logger.info(f"📊 New file size: {new_file_size_bytes / 1024:.2f}KB")
-        
-        # Check if adding new file would exceed limit
-        would_exceed = (total_size_bytes + new_file_size_bytes) > max_size_bytes
-        if would_exceed:
-            logger.warning(f"⚠️ Would exceed limit: {total_size_bytes + new_file_size_bytes} > {max_size_bytes}")
-        
-        return not would_exceed
-        
-    except ClientError as e:
-        logger.error(f"❌ Storage check error: {e}")
-        return True
-
-def cleanup_storage(new_file_size_bytes):
-    """Delete oldest images until enough space is available"""
-    if not s3_client:
-        return
-        
-    try:
-        # Get all objects sorted by last modified (oldest first)
-        response = s3_client.list_objects_v2(Bucket=AWS_BUCKET)
-        
-        if 'Contents' not in response:
-            return
-            
-        # Sort by last modified (oldest first)
-        objects = sorted(
-            response['Contents'],
-            key=lambda x: x['LastModified']
-        )
-        
-        total_size_bytes = sum(obj['Size'] for obj in objects)
-        max_size_bytes = MAX_STORAGE_GB * 1024 * 1024 * 1024
-        target_size_bytes = max_size_bytes - new_file_size_bytes
-        
-        logger.info(f"🧹 Need to free up space. Target: {target_size_bytes / (1024*1024):.2f}MB")
-        
-        # Delete oldest files until under limit
-        to_delete = []
-        current_size_bytes = total_size_bytes
-        
-        for obj in objects:
-            if current_size_bytes <= target_size_bytes:
-                break
-            to_delete.append(obj)
-            current_size_bytes -= obj['Size']
-        
-        if to_delete:
-            logger.info(f"🗑️ Deleting {len(to_delete)} oldest images to free up space")
-            for obj in to_delete:
-                logger.info(f"   Deleting: {obj['Key']} from {obj['LastModified']}")
-                s3_client.delete_object(Bucket=AWS_BUCKET, Key=obj['Key'])
-        else:
-            logger.info("✅ No need to delete any images")
-                
-    except ClientError as e:
-        logger.error(f"❌ Cleanup error: {e}")
-
 def get_presigned_url(filename, expiration=3600):
-    """Generate presigned URL for S3 object"""
+    """Generate presigned URL for S3 object with cache control"""
     if not s3_client:
         logger.error("S3 client not initialized")
         return None
@@ -140,7 +62,8 @@ def get_presigned_url(filename, expiration=3600):
             Params={
                 'Bucket': AWS_BUCKET, 
                 'Key': filename,
-                'ResponseContentType': 'image/jpeg'
+                'ResponseContentType': 'image/jpeg',
+                'ResponseCacheControl': 'no-cache, no-store, must-revalidate'
             },
             ExpiresIn=expiration
         )
@@ -150,7 +73,7 @@ def get_presigned_url(filename, expiration=3600):
         return None
 
 def list_camera_images(camera_id, max_images=6):
-    """List images for a camera from S3, sorted newest first (for display)"""
+    """List images for a camera from S3, sorted newest first"""
     if not s3_client:
         logger.error("S3 client not initialized")
         return []
@@ -162,7 +85,7 @@ def list_camera_images(camera_id, max_images=6):
         response = s3_client.list_objects_v2(
             Bucket=AWS_BUCKET,
             Prefix=f"{camera_id}/",
-            MaxKeys=100
+            MaxKeys=1000  # Increased to get more images
         )
         
         if 'Contents' not in response:
@@ -171,11 +94,11 @@ def list_camera_images(camera_id, max_images=6):
         
         logger.info(f"Found {len(response['Contents'])} total images for {camera_id}")
         
-        # Sort by LastModified in DESCENDING order (newest first) for DISPLAY
+        # Sort by LastModified in DESCENDING order (newest first)
         objects = sorted(
             response['Contents'],
             key=lambda x: x['LastModified'],
-            reverse=True  # Newest first for display!
+            reverse=True  # Newest first!
         )
         
         if objects:
@@ -188,9 +111,12 @@ def list_camera_images(camera_id, max_images=6):
             # Generate presigned URL for each image
             url = get_presigned_url(obj['Key'])
             if url:
+                # Add cache busting parameter
+                cache_busted_url = f"{url}&_t={datetime.now().timestamp()}"
+                
                 image_data = {
                     'key': obj['Key'],
-                    'url': url,
+                    'url': cache_busted_url,
                     'timestamp': obj['LastModified'].isoformat(),
                     'size': obj['Size'],
                     'display_order': i + 1
