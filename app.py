@@ -51,6 +51,44 @@ async def debug_session(request: Request):
         "cookies": request.cookies
     })
 
+# Test S3 endpoint
+@app.get("/test-s3")
+async def test_s3(request: Request):
+    """Test S3 access and listing"""
+    # Check authentication
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse({
+            "success": False,
+            "error": "Not authenticated",
+            "session": dict(request.session)
+        }, status_code=401)
+    
+    try:
+        # Test listing images for HDFC_Bank_1
+        camera_id = "HDFC_Bank_1"
+        images = list_camera_images(camera_id, 10)
+        
+        # Also try to get a presigned URL for the first image if available
+        test_url = None
+        if images and len(images) > 0:
+            test_url = images[0]['url']
+        
+        return JSONResponse({
+            "success": True,
+            "camera_id": camera_id,
+            "images_found": len(images),
+            "images": images,
+            "test_url": test_url,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, status_code=500)
+
 # Helper function to get current user
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     user_id = request.session.get("user_id")
