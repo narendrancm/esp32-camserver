@@ -30,10 +30,14 @@ def upload_to_s3(file_content, filename):
     try:
         logger.info(f"📤 Uploading to S3: {filename}")
         
+        # Get file size from the bytes object
+        file_size = len(file_content)
+        logger.info(f"📏 File size: {file_size} bytes")
+        
         # Check storage before uploading
-        if not check_storage_limit(file_content):
+        if not check_storage_limit(file_size):
             logger.warning("⚠️ Storage limit reached, cleaning up old images...")
-            cleanup_storage(file_content)
+            cleanup_storage(file_size)
         
         response = s3_client.put_object(
             Bucket=AWS_BUCKET,
@@ -50,7 +54,7 @@ def upload_to_s3(file_content, filename):
         logger.error(f"❌ S3 upload error: {e}")
         return False
 
-def check_storage_limit(new_file_size):
+def check_storage_limit(new_file_size_bytes):
     """Check if adding new file would exceed storage limit"""
     if not s3_client:
         return True
@@ -59,22 +63,27 @@ def check_storage_limit(new_file_size):
         # Get total bucket size
         response = s3_client.list_objects_v2(Bucket=AWS_BUCKET)
         
-        if 'Contents' not in response:
-            return True
-            
-        total_size = sum(obj['Size'] for obj in response['Contents'])
+        total_size_bytes = 0
+        if 'Contents' in response:
+            total_size_bytes = sum(obj['Size'] for obj in response['Contents'])
+        
         max_size_bytes = MAX_STORAGE_GB * 1024 * 1024 * 1024
         
-        logger.info(f"📊 Current storage: {total_size / (1024*1024*1024):.2f}GB / {MAX_STORAGE_GB}GB")
+        logger.info(f"📊 Current storage: {total_size_bytes / (1024*1024):.2f}MB / {MAX_STORAGE_GB}GB")
+        logger.info(f"📊 New file size: {new_file_size_bytes / 1024:.2f}KB")
         
         # Check if adding new file would exceed limit
-        return (total_size + new_file_size) <= max_size_bytes
+        would_exceed = (total_size_bytes + new_file_size_bytes) > max_size_bytes
+        if would_exceed:
+            logger.warning(f"⚠️ Would exceed limit: {total_size_bytes + new_file_size_bytes} > {max_size_bytes}")
+        
+        return not would_exceed
         
     except ClientError as e:
         logger.error(f"❌ Storage check error: {e}")
         return True
 
-def cleanup_storage(new_file_size):
+def cleanup_storage(new_file_size_bytes):
     """Delete oldest images until enough space is available"""
     if not s3_client:
         return
@@ -92,25 +101,29 @@ def cleanup_storage(new_file_size):
             key=lambda x: x['LastModified']
         )
         
-        total_size = sum(obj['Size'] for obj in objects)
+        total_size_bytes = sum(obj['Size'] for obj in objects)
         max_size_bytes = MAX_STORAGE_GB * 1024 * 1024 * 1024
-        target_size = max_size_bytes - new_file_size
+        target_size_bytes = max_size_bytes - new_file_size_bytes
+        
+        logger.info(f"🧹 Need to free up space. Target: {target_size_bytes / (1024*1024):.2f}MB")
         
         # Delete oldest files until under limit
         to_delete = []
-        current_size = total_size
+        current_size_bytes = total_size_bytes
         
         for obj in objects:
-            if current_size <= target_size:
+            if current_size_bytes <= target_size_bytes:
                 break
             to_delete.append(obj)
-            current_size -= obj['Size']
+            current_size_bytes -= obj['Size']
         
         if to_delete:
             logger.info(f"🗑️ Deleting {len(to_delete)} oldest images to free up space")
             for obj in to_delete:
                 logger.info(f"   Deleting: {obj['Key']} from {obj['LastModified']}")
                 s3_client.delete_object(Bucket=AWS_BUCKET, Key=obj['Key'])
+        else:
+            logger.info("✅ No need to delete any images")
                 
     except ClientError as e:
         logger.error(f"❌ Cleanup error: {e}")
@@ -158,7 +171,7 @@ def list_camera_images(camera_id, max_images=6):
         
         logger.info(f"Found {len(response['Contents'])} total images for {camera_id}")
         
-        # CRITICAL FIX: Sort by LastModified in DESCENDING order (newest first) for DISPLAY
+        # Sort by LastModified in DESCENDING order (newest first) for DISPLAY
         objects = sorted(
             response['Contents'],
             key=lambda x: x['LastModified'],
@@ -191,5 +204,3 @@ def list_camera_images(camera_id, max_images=6):
     except ClientError as e:
         logger.error(f"❌ S3 list error for {camera_id}: {e}")
         return []
-
-# Note: delete_old_images is replaced by cleanup_storage which manages total storage
