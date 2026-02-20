@@ -257,6 +257,8 @@
                 data.images.forEach((img, index) => {
                     console.log(`   ${index + 1}: ${img.timestamp}`);
                 });
+            } else {
+                console.log('⚠️ No images returned from server');
             }
             
             return data.images || [];
@@ -414,6 +416,8 @@
                 const cardHtml = renderCameraCard(camera, images, status);
                 container.innerHTML += cardHtml;
             }
+            
+            console.log('✅ All cameras loaded at:', new Date().toLocaleTimeString());
         } catch (error) {
             console.error('Error loading cameras:', error);
             container.innerHTML = '<div class="error">Error loading cameras. Please refresh.</div>';
@@ -452,14 +456,14 @@
     
     // Initial load
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('📹 Dashboard loaded');
+        console.log('📹 Dashboard loaded at:', new Date().toLocaleTimeString());
         loadAllCameras();
     });
     
-    // Auto-refresh every 30 seconds
-    setInterval(loadAllCameras, 30000);
+    // Auto-refresh every 10 seconds (faster refresh)
+    setInterval(loadAllCameras, 10000);
     
-    // Update timestamps every 10 seconds
-    setInterval(updateTimestamps, 10000);
+    // Update timestamps every 5 seconds
+    setInterval(updateTimestamps, 5000);
 </script>
 {% endblock %}
