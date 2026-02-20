@@ -17,6 +17,10 @@ try:
         region_name=AWS_REGION
     )
     logger.info("✅ S3 client initialized successfully")
+    
+    # Test S3 access by listing bucket
+    test_response = s3_client.list_objects_v2(Bucket=AWS_BUCKET, MaxKeys=1)
+    logger.info(f"✅ Successfully accessed bucket: {AWS_BUCKET}")
 except Exception as e:
     logger.error(f"❌ Failed to initialize S3 client: {e}")
     s3_client = None
@@ -45,6 +49,7 @@ def upload_to_s3(file_content, filename):
             }
         )
         logger.info(f"✅ Upload successful to S3: {filename}")
+        logger.info(f"✅ Response: {response}")
         return True
     except ClientError as e:
         logger.error(f"❌ S3 upload error: {e}")
@@ -57,6 +62,7 @@ def get_presigned_url(filename, expiration=3600):
         return None
         
     try:
+        logger.info(f"🔗 Generating presigned URL for: {filename}")
         url = s3_client.generate_presigned_url(
             'get_object',
             Params={
@@ -67,6 +73,7 @@ def get_presigned_url(filename, expiration=3600):
             },
             ExpiresIn=expiration
         )
+        logger.info(f"✅ Generated URL: {url[:100]}...")  # Log first 100 chars
         return url
     except ClientError as e:
         logger.error(f"❌ Presigned URL error for {filename}: {e}")
@@ -85,7 +92,7 @@ def list_camera_images(camera_id, max_images=6):
         response = s3_client.list_objects_v2(
             Bucket=AWS_BUCKET,
             Prefix=f"{camera_id}/",
-            MaxKeys=1000  # Increased to get more images
+            MaxKeys=1000
         )
         
         if 'Contents' not in response:
@@ -94,11 +101,15 @@ def list_camera_images(camera_id, max_images=6):
         
         logger.info(f"Found {len(response['Contents'])} total images for {camera_id}")
         
+        # Log first few keys to verify
+        for obj in response['Contents'][:3]:
+            logger.info(f"Found object: {obj['Key']} - {obj['LastModified']}")
+        
         # Sort by LastModified in DESCENDING order (newest first)
         objects = sorted(
             response['Contents'],
             key=lambda x: x['LastModified'],
-            reverse=True  # Newest first!
+            reverse=True
         )
         
         if objects:
@@ -123,6 +134,8 @@ def list_camera_images(camera_id, max_images=6):
                 }
                 images.append(image_data)
                 logger.info(f"✅ Display image {i+1}: {obj['Key']} - {obj['LastModified']}")
+            else:
+                logger.error(f"❌ Failed to generate URL for {obj['Key']}")
         
         logger.info(f"Returning {len(images)} images for display for {camera_id}")
         return images
