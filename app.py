@@ -48,28 +48,20 @@ async def debug_session(request: Request):
     """Debug endpoint to check session status"""
     return JSONResponse({
         "session": dict(request.session),
-        "cookies": request.cookies,
-        "headers": dict(request.headers)
+        "cookies": request.cookies
     })
 
 # Helper function to get current user
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     user_id = request.session.get("user_id")
-    print(f"🔍 get_current_user - Session user_id: {user_id}")
     if not user_id:
         return None
-    user = db.query(User).filter(User.id == user_id).first()
-    if user:
-        print(f"✅ Found user: {user.username}")
-    else:
-        print(f"❌ User not found for id: {user_id}")
-    return user
+    return db.query(User).filter(User.id == user_id).first()
 
 # Helper function to require login
 def require_login(request: Request, db: Session = Depends(get_db)) -> User:
     user = get_current_user(request, db)
     if not user:
-        print("❌ require_login - No authenticated user")
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
@@ -173,7 +165,6 @@ async def logout(request: Request):
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     # Manually check authentication
     user_id = request.session.get("user_id")
-    print(f"🏠 Dashboard access - Session user_id: {user_id}")
     
     if not user_id:
         print("❌ Dashboard - No user_id in session, redirecting to login")
@@ -184,8 +175,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         print(f"❌ Dashboard - User with id {user_id} not found, clearing session")
         request.session.clear()
         return RedirectResponse(url="/login", status_code=302)
-    
-    print(f"✅ Dashboard - User authenticated: {user.username}")
     
     # Get cameras owned by user
     owned_cameras = db.query(Camera).filter(Camera.user_id == user.id).all()
@@ -245,6 +234,7 @@ async def upload_image(
     """Upload image from ESP32-CAM"""
     print(f"\n📸 ===== UPLOAD RECEIVED =====")
     print(f"📸 Camera ID: {camera_id}")
+    print(f"📸 Time: {datetime.now().strftime('%H:%M:%S')}")
     
     try:
         # Find or create camera
@@ -302,7 +292,7 @@ async def get_camera_images(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    """Get images for a camera - shows latest 6 images"""
+    """Get images for a camera - shows latest images"""
     # Check authentication manually
     user_id = request.session.get("user_id")
     if not user_id:
@@ -326,14 +316,15 @@ async def get_camera_images(
     if not (is_owner or is_shared):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Get images from S3 (shows latest 6 for display)
+    # Get images from S3
     images = list_camera_images(camera_id, IMAGES_PER_CAMERA)
     
     # Add cache control headers
     response = JSONResponse({
         "images": images,
         "camera_id": camera_id,
-        "count": len(images)
+        "count": len(images),
+        "timestamp": datetime.now().isoformat()
     })
     
     # Prevent caching
@@ -392,7 +383,8 @@ async def get_camera_status(
     
     return JSONResponse({
         "status": status,
-        "last_seen": last_seen_text
+        "last_seen": last_seen_text,
+        "timestamp": datetime.now().isoformat()
     })
 
 @app.get("/cameras/{camera_id}/share", response_class=HTMLResponse)
