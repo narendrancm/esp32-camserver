@@ -132,3 +132,4 @@ class LocationDetector:
 
 # Global instance
 location_detector = LocationDetector()
+  
