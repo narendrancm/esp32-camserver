@@ -34,11 +34,9 @@ def upload_to_s3(file_content, filename):
     try:
         logger.info(f"📤 Uploading to S3: {filename}")
         
-        # Get file size from the bytes object
         file_size = len(file_content)
         logger.info(f"📏 File size: {file_size} bytes")
         
-        # Upload to S3 - KEEP ALL IMAGES, no deletion
         response = s3_client.put_object(
             Bucket=AWS_BUCKET,
             Key=filename,
@@ -54,8 +52,8 @@ def upload_to_s3(file_content, filename):
         logger.error(f"❌ S3 upload error: {e}")
         return False
 
-def get_presigned_url(filename, expiration=3600):
-    """Generate presigned URL for S3 object"""
+def get_presigned_url(filename, expiration=43200):
+    """Generate presigned URL for S3 object — valid for 12 hours"""
     if not s3_client:
         logger.error("S3 client not initialized")
         return None
@@ -69,7 +67,7 @@ def get_presigned_url(filename, expiration=3600):
                 'Key': filename,
                 'ResponseContentType': 'image/jpeg'
             },
-            ExpiresIn=expiration
+            ExpiresIn=expiration  # 12 hours — fixes black image issue
         )
         logger.info(f"✅ Generated URL successfully")
         return url
@@ -78,7 +76,12 @@ def get_presigned_url(filename, expiration=3600):
         return None
 
 def list_camera_images(camera_id, max_images=6):
-    """List images for a camera from S3, sorted newest first"""
+    """
+    List images for a camera from S3, sorted newest first.
+    Uses paginator to handle buckets with more than 1000 images.
+    This fixes the issue where newest images were not shown
+    because S3 only returned the first 1000 alphabetically.
+    """
     if not s3_client:
         logger.error("S3 client not initialized")
         return []
@@ -86,33 +89,45 @@ def list_camera_images(camera_id, max_images=6):
     try:
         logger.info(f"📋 Listing images for camera: {camera_id}")
         
-        # Use list_objects_v2 to get all objects with the prefix
-        response = s3_client.list_objects_v2(
+        # ─────────────────────────────────────────────────────
+        # FIX: Use paginator instead of list_objects_v2
+        # list_objects_v2 with MaxKeys=1000 returns the FIRST
+        # 1000 images alphabetically — NOT the newest ones.
+        # With 1000+ images, newest images are never shown.
+        # Paginator fetches ALL pages and we sort by LastModified.
+        # ─────────────────────────────────────────────────────
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(
             Bucket=AWS_BUCKET,
-            Prefix=f"{camera_id}/",
-            MaxKeys=1000
+            Prefix=f"{camera_id}/"
         )
-        
-        if 'Contents' not in response:
+
+        # Collect all objects across all pages
+        all_objects = []
+        for page in pages:
+            if 'Contents' in page:
+                all_objects.extend(page['Contents'])
+
+        if not all_objects:
             logger.info(f"No images found for camera: {camera_id}")
             return []
-        
-        logger.info(f"Found {len(response['Contents'])} total images for {camera_id}")
-        
-        # Sort by LastModified in DESCENDING order (newest first)
+
+        logger.info(f"Found {len(all_objects)} total images for {camera_id}")
+
+        # Sort by LastModified DESCENDING — newest first
         objects = sorted(
-            response['Contents'],
+            all_objects,
             key=lambda x: x['LastModified'],
             reverse=True
         )
-        
+
         if objects:
             logger.info(f"Newest image timestamp: {objects[0]['LastModified']}")
-        
-        # Get only the latest max_images for display
+            logger.info(f"Newest image key: {objects[0]['Key']}")
+
+        # Generate presigned URLs for only the latest max_images
         images = []
         for i, obj in enumerate(objects[:max_images]):
-            # Generate presigned URL for each image
             url = get_presigned_url(obj['Key'])
             if url:
                 image_data = {
@@ -126,7 +141,7 @@ def list_camera_images(camera_id, max_images=6):
                 logger.info(f"✅ Display image {i+1}: {obj['Key']}")
             else:
                 logger.error(f"❌ Failed to generate URL for {obj['Key']}")
-        
+
         logger.info(f"Returning {len(images)} images for display for {camera_id}")
         return images
         
