@@ -126,10 +126,27 @@
 
 {% block extra_scripts %}
 <script>
-
+// Format timestamp to HH:MM:SS
 function formatTime(timestamp) {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-GB');
+}
+
+// Handle image loading errors
+function handleImageError(imgElement) {
+    imgElement.onerror = null; // Prevent infinite loop
+    imgElement.src = ''; // Clear the broken image
+    imgElement.alt = 'Failed to load';
+    
+    // Add error message to parent container
+    const container = imgElement.closest('.image-container');
+    if (container && !container.querySelector('.error-message')) {
+        const errorMsg = document.createElement('div');
+        errorMsg.className = 'error-message';
+        errorMsg.style.cssText = 'color: red; font-size: 10px; text-align: center; margin-top: 5px;';
+        errorMsg.textContent = 'Failed to load';
+        container.appendChild(errorMsg);
+    }
 }
 
 async function loadCameraImages(cameraId) {
@@ -148,12 +165,12 @@ async function getCameraStatus(cameraId) {
         const response = await fetch(`/api/camera/${cameraId}/status?t=${Date.now()}`);
         return await response.json();
     } catch (error) {
+        console.error("Status error:", error);
         return { status: "inactive", last_seen: "Unknown" };
     }
 }
 
 function renderCameraCard(camera, images, status) {
-
     const statusClass = status.status === "active"
         ? "status-active"
         : "status-inactive";
@@ -173,7 +190,10 @@ function renderCameraCard(camera, images, status) {
             imagesHtml += `
                 <div class="image-container">
                     <a href="${imageUrl}" target="_blank">
-                        <img src="${imageUrl}" alt="Camera Image">
+                        <img src="${imageUrl}" 
+                             alt="Camera Image" 
+                             onerror="handleImageError(this)"
+                             loading="lazy">
                     </a>
                     <div class="image-timestamp">
                         ${formatTime(img.timestamp)}
@@ -217,28 +237,37 @@ function renderCameraCard(camera, images, status) {
 }
 
 async function loadAllCameras() {
-
     const container = document.getElementById("cameras-container");
-    container.innerHTML = "";
+    container.innerHTML = '<div style="text-align: center; color: white;">Loading cameras...</div>';
 
-    const cameras = {{ cameras | tojson }};
+    try {
+        const cameras = {{ cameras | tojson }};
 
-    for (const camera of cameras) {
+        if (!cameras || cameras.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: white;">No cameras found. Add one to get started!</div>';
+            return;
+        }
 
-        const [images, status] = await Promise.all([
-            loadCameraImages(camera.camera_id),
-            getCameraStatus(camera.camera_id)
-        ]);
+        let html = '';
+        
+        for (const camera of cameras) {
+            const [images, status] = await Promise.all([
+                loadCameraImages(camera.camera_id),
+                getCameraStatus(camera.camera_id)
+            ]);
 
-        container.insertAdjacentHTML(
-            "beforeend",
-            renderCameraCard(camera, images, status)
-        );
+            html += renderCameraCard(camera, images, status);
+        }
+        
+        container.innerHTML = html;
+    } catch (error) {
+        console.error("Error loading cameras:", error);
+        container.innerHTML = '<div style="text-align: center; color: white;">Error loading cameras. Please refresh.</div>';
     }
 }
 
 async function deleteCamera(cameraId) {
-    if (!confirm("Delete this camera?")) return;
+    if (!confirm("Are you sure you want to delete this camera?")) return;
 
     const form = document.createElement("form");
     form.method = "POST";
@@ -247,10 +276,11 @@ async function deleteCamera(cameraId) {
     form.submit();
 }
 
+// Initial load
 document.addEventListener("DOMContentLoaded", loadAllCameras);
 
-// Auto refresh every 10 seconds
-setInterval(loadAllCameras, 10000);
+// Auto refresh every 15 seconds
+setInterval(loadAllCameras, 15000);
 
 </script>
 {% endblock %}
