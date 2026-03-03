@@ -11,3 +11,4 @@ python-jose[cryptography]
 requests
 itsdangerous
 argon2-cffi
+psycopg2-binary
