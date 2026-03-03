@@ -178,30 +178,6 @@
         color: white;
         margin-left: 8px;
     }
-
-    /* Live indicator dot */
-    .live-indicator {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        background: #2ecc71;
-        border-radius: 50%;
-        margin-right: 6px;
-        animation: pulse 1.5s infinite;
-    }
-
-    @keyframes pulse {
-        0%   { opacity: 1; transform: scale(1); }
-        50%  { opacity: 0.4; transform: scale(1.3); }
-        100% { opacity: 1; transform: scale(1); }
-    }
-
-    .refresh-countdown {
-        font-size: 12px;
-        color: #888;
-        text-align: right;
-        margin-bottom: 6px;
-    }
 </style>
 {% endblock %}
 
@@ -209,10 +185,6 @@
 <div class="dashboard-header">
     <h2>📹 Available Cameras</h2>
     <a href="/cameras/new" class="btn">➕ Add Camera</a>
-</div>
-
-<div class="refresh-countdown" id="countdown-display">
-    <span class="live-indicator"></span>Next refresh in <span id="countdown-seconds">12</span>s
 </div>
 
 <div id="cameras-container" class="cameras-grid">
@@ -230,10 +202,6 @@
 
 {% block extra_scripts %}
 <script>
-    // ─── CONFIGURATION ───────────────────────────────────────────
-    const REFRESH_INTERVAL_MS = 12000; // 12 seconds (matches ESP32 sleep + upload time)
-    // ─────────────────────────────────────────────────────────────
-
     // Format timestamp to relative time
     function formatTimeAgo(timestamp) {
         const now = new Date();
@@ -268,10 +236,12 @@
     async function loadCameraImages(cameraId) {
         try {
             console.log(`📸 Loading images for ${cameraId}...`);
+            // Add timestamp to prevent caching
             const response = await fetch(`/api/images/${cameraId}?t=${Date.now()}`);
             
             if (!response.ok) {
                 if (response.status === 401) {
+                    console.error('❌ Not authenticated - please login again');
                     window.location.href = '/login';
                     return [];
                 }
@@ -280,6 +250,17 @@
             
             const data = await response.json();
             console.log(`✅ Loaded ${data.images?.length || 0} images for ${cameraId}`);
+            
+            // Log timestamps to verify newest first
+            if (data.images && data.images.length > 0) {
+                console.log('📸 Image timestamps (newest first):');
+                data.images.forEach((img, index) => {
+                    console.log(`   ${index + 1}: ${img.timestamp}`);
+                });
+            } else {
+                console.log('⚠️ No images returned from server');
+            }
+            
             return data.images || [];
         } catch (error) {
             console.error('Error loading images:', error);
@@ -287,20 +268,22 @@
         }
     }
     
-    // Get camera status
+    // Get camera status with better error handling
     async function getCameraStatus(cameraId) {
         try {
             const response = await fetch(`/api/camera/${cameraId}/status?t=${Date.now()}`);
             
             if (!response.ok) {
                 if (response.status === 401) {
+                    console.error('❌ Not authenticated - please login again');
                     window.location.href = '/login';
                     return { status: 'inactive', last_seen: 'Unknown' };
                 }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
-            return await response.json();
+            const data = await response.json();
+            return data;
         } catch (error) {
             console.error('Error getting camera status:', error);
             return { status: 'inactive', last_seen: 'Unknown' };
@@ -309,7 +292,9 @@
     
     // Delete camera
     async function deleteCamera(cameraId) {
-        if (!confirm('Are you sure you want to delete this camera?')) return;
+        if (!confirm('Are you sure you want to delete this camera?')) {
+            return;
+        }
         
         try {
             const form = document.createElement('form');
@@ -327,20 +312,14 @@
     function renderCameraCard(camera, images, status) {
         const statusClass = status.status === 'active' ? 'status-active' : 'status-inactive';
         const statusText = status.status === 'active' ? '🟢 Active' : '🔴 Inactive';
-        const cacheBust = Date.now(); // Single timestamp for this render pass
         
         let imagesHtml = '';
         if (images && images.length > 0) {
             imagesHtml = '<div class="images-grid">';
-            images.forEach((img, index) => {
-                // ✅ FIX: Cache-bust every image URL so browser fetches fresh images
-                const cachedUrl = `${img.url}?t=${cacheBust}`;
-                // ✅ FIX: Don't lazy-load the first (newest) image — show it immediately
-                const lazyAttr = index > 0 ? 'loading="lazy"' : '';
-
+            images.forEach(img => {
                 imagesHtml += `
                     <div class="image-container" onclick="window.open('${img.url}', '_blank')">
-                        <img src="${cachedUrl}" alt="Camera image" ${lazyAttr}>
+                        <img src="${img.url}" alt="Camera image" loading="lazy">
                         <div class="image-timestamp">${formatTime(img.timestamp)}</div>
                         <div class="image-overlay">
                             ⏰ ${formatTimeAgo(img.timestamp)}<br>
@@ -361,19 +340,28 @@
             `;
         }
         
+        // Build action buttons based on role and permissions
         let actionsHtml = '';
-        actionsHtml += `<button onclick="loadAllCameras()" class="btn">🔄 Refresh</button>`;
         
+        // Refresh button for everyone
+        actionsHtml += `<button onclick="location.reload()" class="btn">🔄 Refresh</button>`;
+        
+        // Edit button (if owner or has edit permission)
         if (camera.role === 'owner' || camera.can_edit) {
             actionsHtml += `<a href="/cameras/${camera.camera_id}/edit" class="btn btn-secondary">✏️ Edit</a>`;
         }
+        
+        // Share button (only for owner)
         if (camera.role === 'owner') {
             actionsHtml += `<a href="/cameras/${camera.camera_id}/share" class="btn" style="background: #9b59b6;">🔗 Share</a>`;
         }
+        
+        // Delete button (only for owner)
         if (camera.role === 'owner') {
             actionsHtml += `<button onclick="deleteCamera('${camera.camera_id}')" class="btn btn-danger">🗑️ Delete</button>`;
         }
         
+        // Add role badge if shared
         const roleBadge = camera.role === 'viewer' ? '<span class="role-badge">Shared</span>' : '';
         
         return `
@@ -403,7 +391,9 @@
         const emptyState = document.getElementById('empty-state');
         
         try {
+            // Get cameras from server
             const cameras = {{ cameras | tojson }};
+            console.log('📹 Loaded cameras:', cameras);
             
             if (!cameras || cameras.length === 0) {
                 container.style.display = 'none';
@@ -415,23 +405,26 @@
             emptyState.style.display = 'none';
             container.innerHTML = '';
             
+            // Load each camera
             for (const camera of cameras) {
+                console.log(`📹 Processing camera: ${camera.camera_id}`);
                 const [images, status] = await Promise.all([
                     loadCameraImages(camera.camera_id),
                     getCameraStatus(camera.camera_id)
                 ]);
                 
-                container.innerHTML += renderCameraCard(camera, images, status);
+                const cardHtml = renderCameraCard(camera, images, status);
+                container.innerHTML += cardHtml;
             }
             
-            console.log('✅ All cameras refreshed at:', new Date().toLocaleTimeString());
+            console.log('✅ All cameras loaded at:', new Date().toLocaleTimeString());
         } catch (error) {
             console.error('Error loading cameras:', error);
             container.innerHTML = '<div class="error">Error loading cameras. Please refresh.</div>';
         }
     }
     
-    // Update timestamps only (lightweight — no image reload)
+    // Update timestamps periodically
     function updateTimestamps() {
         document.querySelectorAll('.last-seen').forEach(elem => {
             const cameraCard = elem.closest('.camera-card');
@@ -443,6 +436,7 @@
                 if (status && status.last_seen) {
                     elem.textContent = status.last_seen;
                     
+                    // Update status badge
                     const badge = cameraCard.querySelector('.status-badge');
                     if (badge) {
                         if (status.status === 'active') {
@@ -454,40 +448,22 @@
                         }
                     }
                 }
-            }).catch(console.error);
+            }).catch(error => {
+                console.error('Error updating timestamp:', error);
+            });
         });
     }
-
-    // Countdown timer display
-    let countdownValue = REFRESH_INTERVAL_MS / 1000;
-    function startCountdown() {
-        const el = document.getElementById('countdown-seconds');
-        countdownValue = REFRESH_INTERVAL_MS / 1000;
-        const tick = setInterval(() => {
-            countdownValue--;
-            if (el) el.textContent = countdownValue;
-            if (countdownValue <= 0) {
-                clearInterval(tick);
-                countdownValue = REFRESH_INTERVAL_MS / 1000;
-            }
-        }, 1000);
-        return tick;
-    }
-
-    // ─── STARTUP ─────────────────────────────────────────────────
+    
+    // Initial load
     document.addEventListener('DOMContentLoaded', () => {
         console.log('📹 Dashboard loaded at:', new Date().toLocaleTimeString());
         loadAllCameras();
-        startCountdown();
-
-        // ✅ FIX: Auto-refresh every 12 seconds (was wrongly set to 60000ms before)
-        setInterval(() => {
-            loadAllCameras();
-            startCountdown();
-        }, REFRESH_INTERVAL_MS);
-
-        // Update timestamps every 5 seconds (lightweight)
-        setInterval(updateTimestamps, 5000);
     });
+    
+    // Auto-refresh every 10 seconds (faster refresh)
+    setInterval(loadAllCameras, 60000);
+    
+    // Update timestamps every 5 seconds
+    setInterval(updateTimestamps, 5000);
 </script>
 {% endblock %}
