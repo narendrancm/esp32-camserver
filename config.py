@@ -4,13 +4,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Flask/FastAPI Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-random-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY_ID", "change-this-to-a-random-secret-key")
 
 # AWS Configuration
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
-AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
-AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
-AWS_BUCKET = os.getenv("AWS_BUCKET")
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY_ID")
+AWS_REGION = os.getenv("AWS_REGION_ID", "ap-south-1")
+AWS_BUCKET = os.getenv("AWS_BUCKET_ID")
 
 # Application Settings
 IMAGES_PER_CAMERA = int(os.getenv("IMAGES_PER_CAMERA", 6))
@@ -24,3 +24,4 @@ print(f"AWS_REGION: {AWS_REGION}")
 print(f"AWS_BUCKET: {AWS_BUCKET}")
 print(f"IMAGES_PER_CAMERA: {IMAGES_PER_CAMERA}")
 print("=====================")
+
