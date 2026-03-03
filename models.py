@@ -2,10 +2,24 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+import os
 
 # Database setup
-DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
+
+# Neon/Postgres requires this fix for SQLAlchemy compatibility
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -19,7 +33,6 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     owned_cameras = relationship("Camera", back_populates="owner", foreign_keys="Camera.user_id")
     shared_cameras = relationship("CameraShare", back_populates="shared_user", foreign_keys="CameraShare.shared_with_user_id")
 
@@ -35,7 +48,6 @@ class Camera(Base):
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     owner = relationship("User", back_populates="owned_cameras", foreign_keys=[user_id])
     shares = relationship("CameraShare", back_populates="camera", cascade="all, delete-orphan")
 
@@ -48,14 +60,17 @@ class CameraShare(Base):
     can_edit = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     camera = relationship("Camera", back_populates="shares")
     shared_user = relationship("User", back_populates="shared_cameras", foreign_keys=[shared_with_user_id])
 
-# Dependency
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+```
+
+And update `requirements.txt` — add this line:
+```
+psycopg2-binary
