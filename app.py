@@ -11,7 +11,7 @@ import traceback
 from config import SECRET_KEY, IMAGES_PER_CAMERA, CAMERA_TIMEOUT_MINUTES
 from models import Base, User, Camera, CameraShare, engine, get_db
 from auth import hash_password, verify_password
-from s3_helper import upload_to_s3, get_presigned_url, list_camera_images, delete_old_images
+from s3_helper import upload_to_s3, get_presigned_url, list_camera_image
 
 # Initialize FastAPI
 app = FastAPI(title="Surveillance Cam")
@@ -544,4 +544,5 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)
+
 
