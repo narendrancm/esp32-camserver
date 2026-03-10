@@ -13,7 +13,7 @@ backend:
   phases:
     build:
       commands:
-      - echo "Build phase – nothing to do for Docker"
+        - echo "Build phase – nothing to do for Docker"
   artifacts:
     baseDirectory: /
     files:
