@@ -1,0 +1,20 @@
+version: 1
+frontend:
+  phases:
+    build:
+      commands: []
+  artifacts:
+    baseDirectory: /
+    files:
+      - '**/*'
+  cache:
+    paths: []
+backend:
+  phases:
+    build:
+      commands:
+      - echo "Build phase – nothing to do for Docker"
+  artifacts:
+    baseDirectory: /
+    files:
+      - '**/*'
