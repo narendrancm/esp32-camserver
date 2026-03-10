@@ -1,18 +1,15 @@
-# Use official Python image
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Install system dependencies needed for psycopg2 and others
+RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
 COPY . .
 
-# Expose the port your app runs on
 EXPOSE 5000
 
-# Command to run the application
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
