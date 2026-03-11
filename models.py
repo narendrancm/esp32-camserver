@@ -4,16 +4,17 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 
-# Get database URL from environment variable (set in AWS Amplify)
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
+# Get SQLite database path from environment (default to ./surveillance.db)
+SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "./surveillance.db")
+DATABASE_URL = f"sqlite:///{SQLITE_DB_PATH}"
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # Required for SQLite
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Models
 class User(Base):
     __tablename__ = "users"
     
