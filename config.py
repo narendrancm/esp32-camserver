@@ -8,7 +8,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise ValueError("SECRET_KEY must be set in environment variables")
 
-# S3 credentials (renamed to avoid AWS_ prefix)
+# S3 credentials (required)
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 S3_REGION = os.getenv("S3_REGION", "ap-south-1")
