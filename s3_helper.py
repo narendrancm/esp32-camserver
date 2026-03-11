@@ -7,7 +7,6 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize S3 client using the non-AWS_ prefixed variables
 try:
     s3_client = boto3.client(
         's3',
@@ -65,7 +64,7 @@ def get_presigned_url(filename, expiration=43200):
                 'Key': filename,
                 'ResponseContentType': 'image/jpeg'
             },
-            ExpiresIn=expiration  # 12 hours
+            ExpiresIn=expiration
         )
         logger.info(f"✅ Generated URL successfully")
         return url
@@ -109,7 +108,6 @@ def list_camera_images(camera_id, max_images=6):
             reverse=True
         )
 
-        # Generate presigned URLs for only the latest max_images
         images = []
         for i, obj in enumerate(objects[:max_images]):
             url = get_presigned_url(obj['Key'])
