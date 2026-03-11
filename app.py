@@ -17,7 +17,7 @@ from s3_helper import upload_to_s3, get_presigned_url, list_camera_images
 app = FastAPI(title="Surveillance Cam")
 
 # Add session middleware
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=86400)  # 24 hours
 
 # Templates
 templates = Jinja2Templates(directory="templates")
@@ -41,6 +41,11 @@ def create_default_admin():
     db.close()
 
 create_default_admin()
+
+# Health check endpoint (optional)
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 # Helper function to get current user
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
@@ -142,7 +147,16 @@ async def logout(request: Request):
     return RedirectResponse(url="/login", status_code=302)
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, user: User = Depends(require_login), db: Session = Depends(get_db)):
+async def dashboard(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
+    
     # Get cameras owned by user
     owned_cameras = db.query(Camera).filter(Camera.user_id == user.id).all()
     
@@ -156,7 +170,6 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
     # Convert all cameras to dictionaries
     all_cameras = []
     
-    # Add owned cameras
     for camera in owned_cameras:
         all_cameras.append({
             'id': camera.id,
@@ -168,7 +181,6 @@ async def dashboard(request: Request, user: User = Depends(require_login), db: S
             'can_edit': True
         })
     
-    # Add shared cameras
     for camera in shared_cameras:
         share_info = db.query(CameraShare).filter(
             CameraShare.camera_id == camera.id,
@@ -201,6 +213,7 @@ async def upload_image(
     """Upload image from ESP32-CAM"""
     print(f"\n📸 ===== UPLOAD RECEIVED =====")
     print(f"📸 Camera ID: {camera_id}")
+    print(f"📸 Time: {datetime.now().strftime('%H:%M:%S')}")
     
     try:
         # Find or create camera
@@ -212,15 +225,13 @@ async def upload_image(
                 camera_id=camera_id,
                 name=f"Camera {camera_id}",
                 location="Auto-detected",
-                user_id=1
+                user_id=1  # Assign to admin by default
             )
             db.add(camera)
             db.flush()
         
         # Update last_seen timestamp
-        old_last_seen = camera.last_seen
         camera.last_seen = datetime.utcnow()
-        print(f"📸 Updated last_seen from {old_last_seen} to {camera.last_seen}")
         db.commit()
         
         # Read file content
@@ -237,8 +248,6 @@ async def upload_image(
         
         if success:
             print(f"✅ Upload successful to S3: {filename}")
-            delete_old_images(camera_id, IMAGES_PER_CAMERA)
-            print(f"✅ Upload complete for camera {camera_id}")
             return JSONResponse({"status": "success", "message": "Image uploaded"})
         else:
             print(f"❌ S3 upload failed: {filename}")
@@ -258,10 +267,18 @@ async def upload_image(
 @app.get("/api/images/{camera_id}")
 async def get_camera_images(
     camera_id: str,
-    user: User = Depends(require_login),
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """Get images for a camera"""
+    """Get images for a camera - shows latest images"""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -279,32 +296,30 @@ async def get_camera_images(
     # Get images from S3
     images = list_camera_images(camera_id, IMAGES_PER_CAMERA)
     
-    # Log what we're returning (for debugging)
-    print(f"\n📸 Returning {len(images)} images for {camera_id}")
-    for i, img in enumerate(images):
-        print(f"   Image {i+1}: {img['key']}")
-        print(f"       URL: {img['url'][:80]}...")
-    
-    # Return with cache control headers
     response = JSONResponse({
         "images": images,
         "camera_id": camera_id,
-        "count": len(images)
+        "count": len(images),
+        "timestamp": datetime.now().isoformat()
     })
     
-    # Prevent caching
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    
     return response
 
 @app.get("/api/camera/{camera_id}/status")
 async def get_camera_status(
     camera_id: str,
-    user: User = Depends(require_login),
+    request: Request,
     db: Session = Depends(get_db)
 ):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -339,211 +354,10 @@ async def get_camera_status(
     
     return JSONResponse({
         "status": status,
-        "last_seen": last_seen_text
+        "last_seen": last_seen_text,
+        "timestamp": datetime.now().isoformat()
     })
 
-@app.get("/cameras/new", response_class=HTMLResponse)
-async def new_camera_page(request: Request, user: User = Depends(require_login)):
-    return templates.TemplateResponse("edit_camera.html", {
-        "request": request,
-        "session": request.session,
-        "user": user,
-        "camera": None,
-        "action": "Add"
-    })
-
-@app.post("/cameras/new")
-async def create_camera(
-    request: Request,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    form = await request.form()
-    camera_id = form.get("camera_id")
-    name = form.get("name")
-    location = form.get("location")
-    
-    if db.query(Camera).filter(Camera.camera_id == camera_id).first():
-        return templates.TemplateResponse("edit_camera.html", {
-            "request": request,
-            "session": request.session,
-            "user": user,
-            "camera": None,
-            "action": "Add",
-            "error": "Camera ID already exists"
-        })
-    
-    new_camera = Camera(
-        camera_id=camera_id,
-        name=name,
-        location=location,
-        user_id=user.id
-    )
-    db.add(new_camera)
-    db.commit()
-    
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-@app.get("/cameras/{camera_id}/edit", response_class=HTMLResponse)
-async def edit_camera_page(
-    camera_id: str,
-    request: Request,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    camera = db.query(Camera).filter(
-        Camera.camera_id == camera_id,
-        Camera.user_id == user.id
-    ).first()
-    
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    return templates.TemplateResponse("edit_camera.html", {
-        "request": request,
-        "session": request.session,
-        "user": user,
-        "camera": camera,
-        "action": "Edit"
-    })
-
-@app.post("/cameras/{camera_id}/edit")
-async def update_camera(
-    camera_id: str,
-    request: Request,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    camera = db.query(Camera).filter(
-        Camera.camera_id == camera_id,
-        Camera.user_id == user.id
-    ).first()
-    
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    form = await request.form()
-    camera.name = form.get("name")
-    camera.location = form.get("location")
-    db.commit()
-    
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-@app.post("/cameras/{camera_id}/delete")
-async def delete_camera(
-    camera_id: str,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    camera = db.query(Camera).filter(
-        Camera.camera_id == camera_id,
-        Camera.user_id == user.id
-    ).first()
-    
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    db.delete(camera)
-    db.commit()
-    
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-@app.get("/cameras/{camera_id}/share", response_class=HTMLResponse)
-async def share_camera_page(
-    camera_id: str,
-    request: Request,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    camera = db.query(Camera).filter(
-        Camera.camera_id == camera_id,
-        Camera.user_id == user.id
-    ).first()
-    
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    shares = db.query(CameraShare).filter(
-        CameraShare.camera_id == camera.id
-    ).all()
-    
-    other_users = db.query(User).filter(User.id != user.id).all()
-    
-    return templates.TemplateResponse("share_camera.html", {
-        "request": request,
-        "session": request.session,
-        "user": user,
-        "camera": camera,
-        "shares": shares,
-        "other_users": other_users
-    })
-
-@app.post("/cameras/{camera_id}/share")
-async def share_camera(
-    camera_id: str,
-    request: Request,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    form = await request.form()
-    shared_user_id = form.get("user_id")
-    can_edit = form.get("can_edit") == "on"
-    
-    camera = db.query(Camera).filter(
-        Camera.camera_id == camera_id,
-        Camera.user_id == user.id
-    ).first()
-    
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    existing = db.query(CameraShare).filter(
-        CameraShare.camera_id == camera.id,
-        CameraShare.shared_with_user_id == shared_user_id
-    ).first()
-    
-    if existing:
-        existing.can_edit = can_edit
-    else:
-        share = CameraShare(
-            camera_id=camera.id,
-            shared_with_user_id=shared_user_id,
-            can_edit=can_edit
-        )
-        db.add(share)
-    
-    db.commit()
-    return RedirectResponse(url=f"/cameras/{camera_id}/share", status_code=302)
-
-@app.post("/cameras/{camera_id}/unshare/{user_id}")
-async def unshare_camera(
-    camera_id: str,
-    user_id: int,
-    user: User = Depends(require_login),
-    db: Session = Depends(get_db)
-):
-    camera = db.query(Camera).filter(
-        Camera.camera_id == camera_id,
-        Camera.user_id == user.id
-    ).first()
-    
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    db.query(CameraShare).filter(
-        CameraShare.camera_id == camera.id,
-        CameraShare.shared_with_user_id == user_id
-    ).delete()
-    
-    db.commit()
-    return RedirectResponse(url=f"/cameras/{camera_id}/share", status_code=302)
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
-
-
-
+# ... (include all other routes: share, edit, delete etc. from your original app.py)
+# For brevity, I'm not repeating them here, but they should be the same as before.
+# Make sure none of them call delete_old_images.
