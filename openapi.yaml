@@ -1,0 +1,26 @@
+# File: openapi.yaml
+openapi: 3.1.0
+info:
+  title: Surveillance Cam API
+  version: 1.0.0
+servers:
+  - url: /  # Relative URL, will be completed by Choreo
+paths:
+  /health:
+    get:
+      summary: Health Check
+      responses:
+        '200':
+          description: OK
+  /api/images/{camera_id}:
+    get:
+      summary: Get Camera Images
+      parameters:
+        - name: camera_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Successful Response
+  # ... define other paths like /upload, /login, /dashboard etc. ...
